@@ -1,7 +1,7 @@
 # phase-03-upload-processing — Progress
 
 **Status:** in_progress
-**SIs:** 2/19 completed
+**SIs:** 3/19 completed
 
 ### SI-03.1 — Infra: object storage (MinIO) + cliente S3
 - **Status:** completed
@@ -19,9 +19,13 @@
   - Testes de integração usam nomes de bucket únicos por execução (`test-bootstrap-${Date.now()}`) para exercitar genuinamente o caminho "bucket ausente", já que o MinIO de dev já tinha um bucket `videos` pré-existente.
 
 ### SI-03.3 — Entidade Video + migration
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 4 passing
+- **Observations:**
+  - Banco dev já tinha uma tabela `videos` órfã (schema antigo, com `source_extension`/CHECK constraint, sem `title`) e uma linha correspondente na tabela `migrations` (`CreateVideos1789666232485`) sem arquivo de migration no disco — residual da implementação anterior descartada (mesma achada na SI-03.1). Seguido o procedimento documentado em `.claude/rules/typeorm-migrations.md` § "Recovering from synchronize Residue": drop da tabela órfã (continha 1 linha de teste manual, `READY`/`mp4`, 2026-09-18 — não é dado real), remoção da linha órfã em `migrations`, regeneração limpa da migration (`CREATE TABLE` em vez de `ALTER`).
+  - Campos do TS em camelCase (conforme literal do plano, ex. `channelId`, `uploadCompletedAt`) mapeados para colunas snake_case via `@Column({ name: '...' })`, para manter a convenção de nomes de coluna já estabelecida em `users`/`channels` (que usam propriedades TS já em snake_case, sem naming strategy global configurada).
+  - Adicionado `@OneToMany(() => Video, ...)` em `Channel` (lado inverso da relação, per regra "always define both sides").
+  - `cleanAllTables` (helper compartilhado de testes) atualizado para truncar `videos` também.
 
 ### SI-03.4 — Infra: Redis + módulo de fila BullMQ
 - **Status:** pending
