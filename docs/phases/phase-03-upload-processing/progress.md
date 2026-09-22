@@ -1,7 +1,7 @@
 # phase-03-upload-processing — Progress
 
 **Status:** in_progress
-**SIs:** 5/19 completed
+**SIs:** 6/19 completed
 
 ### SI-03.1 — Infra: object storage (MinIO) + cliente S3
 - **Status:** completed
@@ -44,9 +44,13 @@
   - `PUBLIC_S3_CLIENT` adicionado ao `StorageModule` (token de DI distinto de `INTERNAL_S3_CLIENT`, per TD-01/TD-02).
 
 ### SI-03.6 — Endpoints de streaming e download
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 10 passing (E2E, via /plan-test-specs spec `nestjs-project/specs/video-delivery.plan.md`)
+- **Observations:**
+  - Achado (via `tsc --noEmit`, rodado pela primeira vez nesta fase): `storage.config.ts` tinha 4 campos obrigatórios (`publicEndpoint`, `region`, `accessKeyId`, `secretAccessKey`) tipados implicitamente como `string | undefined` (sem fallback), quebrando a construção do `S3Client` (`AwsCredentialIdentity.accessKeyId` exige `string`). Corrigido com cast `as string` documentado (garantia real vem do Joi `.required()` em `env.validation.ts`) — dívida oculta desde SI-03.1, só capturada agora porque `tsc --noEmit` nunca tinha sido rodado explicitamente nesta fase (os testes `ts-jest` não pegaram, aparentemente não fazem type-check completo). A partir de agora vou rodar `tsc --noEmit` a cada SI, não só ao final.
+  - `VideoNotFoundException` (criada na SI-03.5) não seguia o padrão de exceção de domínio do projeto (`DomainException extends Error` com `errorCode`/`httpStatus`, capturada pelo `DomainExceptionFilter` global) — era um `Error` puro, nunca seria mapeada para HTTP e resultaria em 500. Corrigido para estender `DomainException`; `VideoNotReadyException` (nova) já nasce seguindo o padrão correto.
+  - `VideoDeliveryService.findVideoOrThrow` (privado) tornado público (`getVideoOrThrow`) para o controller reusar a mesma busca antes de decidir o gate de prontidão — sem duplicar a exceção de domínio em dois lugares.
+  - Teste E2E autorado via Step 3a (JIT spec read) do `/implement`, a partir de `nestjs-project/specs/video-delivery.plan.md` — 1 `describe('videos')` com 10 `test()`/`it.each()` (não describes aninhados por grupo, per convenção do pipeline spec-driven).
 
 ### SI-03.7 — Módulo de upload: tus mount + criação de rascunho
 - **Status:** pending

@@ -32,7 +32,10 @@ describe('StorageBucketBootstrapService — concurrent bootstrap (integration)',
 
   it('does not throw on either side when two bootstraps race against an empty bucket', async () => {
     const config = { ...baseConfig, bucket };
-    const apiSideBootstrap = new StorageBucketBootstrapService(s3Client, config);
+    const apiSideBootstrap = new StorageBucketBootstrapService(
+      s3Client,
+      config,
+    );
     const workerSideBootstrap = new StorageBucketBootstrapService(
       s3Client,
       config,

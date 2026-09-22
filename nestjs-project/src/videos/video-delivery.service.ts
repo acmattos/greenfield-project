@@ -20,18 +20,18 @@ export class VideoDeliveryService {
   ) {}
 
   async getStreamUrl(videoId: string): Promise<string> {
-    const video = await this.findVideoOrThrow(videoId);
+    const video = await this.getVideoOrThrow(videoId);
     return this.buildSignedUrl(video.sourceStorageKey, {});
   }
 
   async getDownloadUrl(videoId: string): Promise<string> {
-    const video = await this.findVideoOrThrow(videoId);
+    const video = await this.getVideoOrThrow(videoId);
     return this.buildSignedUrl(video.sourceStorageKey, {
       ResponseContentDisposition: 'attachment',
     });
   }
 
-  private async findVideoOrThrow(videoId: string): Promise<Video> {
+  async getVideoOrThrow(videoId: string): Promise<Video> {
     const video = await this.videoRepository.findOneBy({ id: videoId });
     if (!video) {
       throw new VideoNotFoundException(videoId);
