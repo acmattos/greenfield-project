@@ -1,7 +1,7 @@
 # phase-03-upload-processing — Progress
 
 **Status:** in_progress
-**SIs:** 1/19 completed
+**SIs:** 2/19 completed
 
 ### SI-03.1 — Infra: object storage (MinIO) + cliente S3
 - **Status:** completed
@@ -12,9 +12,11 @@
   - Healthcheck do `minio` usa `mc ready local` (binário `mc` já embutido na imagem oficial `minio/minio`) em vez de `curl`, que não existe na imagem.
 
 ### SI-03.2 — Infra: bootstrap idempotente do bucket MinIO
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 3 passing
+- **Observations:**
+  - `BucketAlreadyOwnedByYou`/`BucketAlreadyExists` comparados por `.name` (string), não `instanceof` — mais robusto contra MinIO (provedor S3-compatible) não reproduzir exatamente o mesmo protótipo de exceção que a AWS real; padrão confirmado via Context7 (ERROR_HANDLING.md do aws-sdk-js-v3).
+  - Testes de integração usam nomes de bucket únicos por execução (`test-bootstrap-${Date.now()}`) para exercitar genuinamente o caminho "bucket ausente", já que o MinIO de dev já tinha um bucket `videos` pré-existente.
 
 ### SI-03.3 — Entidade Video + migration
 - **Status:** pending
