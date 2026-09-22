@@ -1,7 +1,7 @@
 # phase-03-upload-processing — Progress
 
 **Status:** in_progress
-**SIs:** 4/19 completed
+**SIs:** 5/19 completed
 
 ### SI-03.1 — Infra: object storage (MinIO) + cliente S3
 - **Status:** completed
@@ -36,9 +36,12 @@
   - AC "queue.add() com Redis indisponível rejeita rápido" não tem teste dedicado na Tests table da SI (só o compilation test) — garantida arquiteturalmente por `enableOfflineQueue: false` + `maxRetriesPerRequest: 1`, comportamento confirmado via Context7 (ioredis README/RedisOptions.ts) nesta sessão.
 
 ### SI-03.5 — Serviço de entrega: URLs assinadas streaming/download
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 4 passing
+- **Observations:**
+  - Criada `VideoNotFoundException` (exceção de domínio, não HTTP) já nesta SI — necessária para o próprio `VideoDeliveryService` funcionar (busca por id pode falhar); SI-03.6 vai reutilizá-la no controller, não recriar.
+  - Testes de GET real (download/range) assinam a URL contra o endpoint **interno** (`STORAGE_ENDPOINT`, alcançável via rede do Compose), não o público (`STORAGE_PUBLIC_ENDPOINT=http://localhost:9000`, que dentro do próprio container de teste resolveria para o container `nestjs-api`, não o MinIO) — mesmo padrão documentado nas decisões da fase (TD-02) para testes de rede real.
+  - `PUBLIC_S3_CLIENT` adicionado ao `StorageModule` (token de DI distinto de `INTERNAL_S3_CLIENT`, per TD-01/TD-02).
 
 ### SI-03.6 — Endpoints de streaming e download
 - **Status:** pending
