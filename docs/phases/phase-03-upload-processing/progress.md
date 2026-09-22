@@ -1,7 +1,7 @@
 # phase-03-upload-processing — Progress
 
 **Status:** in_progress
-**SIs:** 3/19 completed
+**SIs:** 4/19 completed
 
 ### SI-03.1 — Infra: object storage (MinIO) + cliente S3
 - **Status:** completed
@@ -28,9 +28,12 @@
   - `cleanAllTables` (helper compartilhado de testes) atualizado para truncar `videos` também.
 
 ### SI-03.4 — Infra: Redis + módulo de fila BullMQ
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 1 passing
+- **Observations:**
+  - `.env`/`.env.example` já tinham `QUEUE_REDIS_HOST`/`QUEUE_REDIS_PORT` (nomes divergentes) e `VIDEO_PROCESSING_MAX_ATTEMPTS`/`VIDEO_PROCESSING_BACKOFF_DELAY_MS` (não fazem parte do contrato desta SI — o plano fixa `attempts:3`/backoff exponencial `delay:1000` hardcoded, não configurável por env) — renomeado para `REDIS_HOST`/`REDIS_PORT` (nomes literais do texto do plano) e removidas as duas vars não usadas.
+  - Porta 6379 já estava ocupada no host por um container `redis` de outro projeto — removido o bind de porta do serviço `redis` deste compose (não é necessário: acesso é só via rede interna do Compose, diferente do MinIO que precisa ser alcançável pelo browser).
+  - AC "queue.add() com Redis indisponível rejeita rápido" não tem teste dedicado na Tests table da SI (só o compilation test) — garantida arquiteturalmente por `enableOfflineQueue: false` + `maxRetriesPerRequest: 1`, comportamento confirmado via Context7 (ioredis README/RedisOptions.ts) nesta sessão.
 
 ### SI-03.5 — Serviço de entrega: URLs assinadas streaming/download
 - **Status:** pending
