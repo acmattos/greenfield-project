@@ -1,7 +1,7 @@
 # phase-03-upload-processing — Progress
 
 **Status:** in_progress
-**SIs:** 18/19 completed
+**SIs:** 19/19 completed
 
 ### SI-03.1 — Infra: object storage (MinIO) + cliente S3
 - **Status:** completed
@@ -163,6 +163,10 @@
   - Um processo `node dist/worker/main.js` órfão (de uma execução anterior do teste que falhou antes de eu adicionar o bloco `try/finally`) ficou rodando no container durante a investigação — limpo manualmente via `kill`; o teste final já inclui `try/finally` garantindo que o processo filho spawnado é sempre encerrado, mesmo em caso de falha de asserção.
 
 ### SI-03.19 — tus termination (DELETE) escopo restrito
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 2 integração (novos) + 34 de regressão confirmadas (todo o módulo `src/upload`)
+- **Observations:**
+  - `disableTerminationForFinishedUploads: true` já estava configurado desde a SI-03.7 — nenhuma mudança necessária ali. `S3Store.remove(id)` padrão reutilizado sem override (confirmado: aborta multipart + deleta objeto/`.info` num único call).
+  - `EVENTS.POST_TERMINATE` fires **depois** do response 204 já ter sido escrito (confirmado lendo `node_modules/@tus/server/dist/handlers/DeleteHandler.js`: `this.write(res, 204, {})` roda antes de `this.emit(EVENTS.POST_TERMINATE, ...)`), e o EventEmitter não aguarda a Promise do listener — fire-and-forget, mesmo padrão do `@OnWorkerEvent` do BullMQ (SI-03.15). O teste de integração precisou fazer *polling* na remoção do `Video` (não pode assumir sincronicidade logo após o `.expect(204)`), mas a limpeza do **storage** É síncrona (`await this.store.remove(id)` roda antes do `write`), então essa parte pôde ser verificada imediatamente.
+  - Resposta de `400 INVALID_TERMINATION` é texto puro do protocolo tus nativo (`'Cannot terminate an already completed upload'`, confirmado em `node_modules/@tus/utils/dist/constants.js`), fora do envelope JSON customizado do projeto — comportamento esperado per o texto do plano, teste assertado contra o texto exato, não um JSON parseado.
+  - Nenhum bug de produção novo — implementação e testes passaram de primeira.

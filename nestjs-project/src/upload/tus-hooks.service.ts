@@ -62,6 +62,16 @@ export class TusHooksService {
     return { res };
   }
 
+  // Registered on EVENTS.POST_TERMINATE (upload-processing/TD-13) — the
+  // library only fires this after a successful DELETE, already scoped to
+  // in-progress uploads via disableTerminationForFinishedUploads. Hard
+  // deletes the draft row; no new processingStatus/publicationStatus value
+  // for "cancelled" (per TD-06/TD-13 — a cancelled draft has no processing
+  // history worth retaining).
+  async onUploadTerminate(videoId: string): Promise<void> {
+    await this.videoRepository.delete({ id: videoId });
+  }
+
   async onIncomingRequest(
     req: IncomingMessage,
     _res: ServerResponse,

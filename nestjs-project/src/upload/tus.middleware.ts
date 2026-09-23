@@ -1,9 +1,9 @@
 import { randomUUID } from 'crypto';
-import { Injectable, NestMiddleware } from '@nestjs/common';
+import { Injectable, Logger, NestMiddleware } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
 import type { Request, Response, NextFunction } from 'express';
-import { Server } from '@tus/server';
+import { EVENTS, Server } from '@tus/server';
 import { S3Store } from '@tus/s3-store';
 import storageConfig from '../config/storage.config';
 import uploadConfig from '../config/upload.config';
@@ -16,6 +16,7 @@ import { TusHooksService } from './tus-hooks.service';
 
 @Injectable()
 export class TusMiddleware implements NestMiddleware {
+  private readonly logger = new Logger(TusMiddleware.name);
   private readonly server: Server;
 
   constructor(
@@ -52,6 +53,19 @@ export class TusMiddleware implements NestMiddleware {
         tusHooks.onUploadCreate(req, res, uploadObj),
       onUploadFinish: (req, res, uploadObj) =>
         tusHooks.onUploadFinish(req, res, uploadObj),
+    });
+
+    // POST_TERMINATE fires AFTER the 204 response is already written
+    // (confirmed in @tus/server's DeleteHandler.send) — never awaited by
+    // the library, so this must not throw synchronously; any rejection is
+    // caught and logged rather than propagated (fire-and-forget, per the
+    // same pattern as @nestjs/bullmq's own event listeners).
+    this.server.on(EVENTS.POST_TERMINATE, (_req, _res, id) => {
+      tusHooks.onUploadTerminate(id).catch((error: Error) => {
+        this.logger.error(
+          `Failed to delete Video draft ${id} after upload termination: ${error.message}`,
+        );
+      });
     });
   }
 
