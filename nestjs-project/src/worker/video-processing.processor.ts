@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import type { ConfigType } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
@@ -128,6 +128,38 @@ export class VideoProcessingProcessor extends WorkerHost {
         Bucket: this.storage.bucket,
         Key: sourceStorageKey,
       }),
+    );
+  }
+
+  @OnWorkerEvent('failed')
+  async onFailed(job: Job<{ videoId: string }>, error: Error): Promise<void> {
+    const maxAttempts = job.opts.attempts ?? 1;
+    const isFinal =
+      error instanceof UnrecoverableError || job.attemptsMade >= maxAttempts;
+
+    if (!isFinal) {
+      // A transient failure that will still be retried by BullMQ — never
+      // write FAILED here, or a later successful retry would have to
+      // "unwrite" it (per upload-processing/TD-10, avoids flicker).
+      return;
+    }
+
+    await this.persistTerminalFailure(job.data.videoId, error.message);
+  }
+
+  // The single writer of processingStatus = 'FAILED' in the whole worker —
+  // invoked both by this live 'failed' event and (per TD-10's revision) by
+  // the reconciliation sweep (SI-03.16), never two independent writers.
+  async persistTerminalFailure(
+    videoId: string,
+    reason: string,
+  ): Promise<void> {
+    this.logger.warn(`Video ${videoId} processing failed terminally: ${reason}`);
+    // Tolerant of 0 affected rows (per upload-processing/TD-10) — a
+    // videoId that no longer exists is not an error at this layer.
+    await this.videoRepository.update(
+      { id: videoId },
+      { processingStatus: VideoProcessingStatus.FAILED },
     );
   }
 }

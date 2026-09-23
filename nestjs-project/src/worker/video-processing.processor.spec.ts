@@ -14,6 +14,19 @@ function fakeJob(videoId: string, id = 'job-1'): Job<{ videoId: string }> {
   } as unknown as Job<{ videoId: string }>;
 }
 
+function fakeFailedJob(
+  videoId: string,
+  attemptsMade: number,
+  attempts = 3,
+): Job<{ videoId: string }> {
+  return {
+    id: 'job-1',
+    data: { videoId },
+    attemptsMade,
+    opts: { attempts },
+  } as unknown as Job<{ videoId: string }>;
+}
+
 const VALID_MP4_PROBE = {
   streams: [{ codec_type: 'video', codec_name: 'h264' }],
   format: { format_name: 'mov,mp4,m4a,3gp,3g2,mj2', tags: { major_brand: 'isom' } },
@@ -314,6 +327,46 @@ describe('VideoProcessingProcessor', () => {
         Key: 'videos/video-1/thumbnail',
         ContentType: 'image/jpeg',
       });
+    });
+  });
+
+  describe("@OnWorkerEvent('failed')", () => {
+    it('persists FAILED when the error is an UnrecoverableError', async () => {
+      const job = fakeFailedJob('video-1', 1, 3);
+
+      await processor.onFailed(job, new UnrecoverableError('bad format'));
+
+      expect(videoRepository.update).toHaveBeenCalledWith(
+        { id: 'video-1' },
+        { processingStatus: VideoProcessingStatus.FAILED },
+      );
+    });
+
+    it('does not persist FAILED for a transient error that will still be retried (attemptsMade < attempts)', async () => {
+      const job = fakeFailedJob('video-1', 2, 3);
+
+      await processor.onFailed(job, new Error('transient network error'));
+
+      expect(videoRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('persists FAILED for a transient error whose attempts are exhausted (attemptsMade >= attempts)', async () => {
+      const job = fakeFailedJob('video-1', 3, 3);
+
+      await processor.onFailed(job, new Error('transient network error'));
+
+      expect(videoRepository.update).toHaveBeenCalledWith(
+        { id: 'video-1' },
+        { processingStatus: VideoProcessingStatus.FAILED },
+      );
+    });
+
+    it('persistTerminalFailure does not throw for a videoId with no matching row', async () => {
+      videoRepository.update.mockResolvedValue({ affected: 0 });
+
+      await expect(
+        processor.persistTerminalFailure('missing-id', 'some reason'),
+      ).resolves.toBeUndefined();
     });
   });
 });

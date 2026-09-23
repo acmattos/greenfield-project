@@ -1,7 +1,7 @@
 # phase-03-upload-processing — Progress
 
 **Status:** in_progress
-**SIs:** 14/19 completed
+**SIs:** 15/19 completed
 
 ### SI-03.1 — Infra: object storage (MinIO) + cliente S3
 - **Status:** completed
@@ -126,9 +126,12 @@
   - Nenhum bug de produção novo encontrado nesta SI — código e testes (unit + integração) passaram de primeira depois do rebuild+restart do worker (lição da SI-03.13 aplicada preventivamente desta vez).
 
 ### SI-03.15 — Worker: handler @OnWorkerEvent('failed') → FAILED
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 18 unit + 6 integração (2 novos desta SI + 4 de regressão confirmadas)
+- **Observations:**
+  - `persistTerminalFailure` é o único ponto do worker que escreve `processingStatus: 'FAILED'` — chamado tanto pelo handler `@OnWorkerEvent('failed')` (evento ao vivo) quanto, futuramente, pela sweep de reconciliação (SI-03.16), per a revisão de `upload-processing/TD-10`. `isFinal` computado como `error instanceof UnrecoverableError || job.attemptsMade >= job.opts.attempts` — confirmado empiricamente via script ad-hoc que `job.opts.attempts` e `job.attemptsMade` chegam corretamente populados no callback do evento `failed` do BullMQ (`attemptsMade` já pós-incrementado no momento do evento).
+  - Bug de construção de teste (não de produção), achado e corrigido via investigação empírica: meus dois testes de integração novos usavam `queue.add(..., { jobId, attempts: 3 })` sem `backoff` explícito. A fila registrada pelo `WorkerModule` (`BullModule.registerQueue({name: VIDEO_PROCESSING_QUEUE})`, sem `defaultJobOptions`) não define backoff — diferente da fila do lado producer (`queue.module.ts`, que define `backoff: {type:'exponential', delay:1000}`). Sem backoff explícito na chamada do teste, os 3 attempts se esgotavam em ~267ms (sem esperar entre tentativas), fazendo `processingStatus` virar `FAILED` quase instantaneamente e quebrando as duas asserções de "estado intermediário ainda é PROCESSING". Diagnosticado com 2 scripts `ts-node` ad-hoc (um isolado com `Queue`/`Worker` crus, outro reproduzindo o cenário real via `WorkerModule` + timestamps) — confirmou que `job.opts.attempts`/`attemptsMade` estavam corretos, isolando a causa ao backoff ausente. Corrigido passando `backoff: {type:'exponential', delay:1000}` explicitamente nos dois `queue.add()` dos testes novos (mesmo valor real de produção).
+  - Handler assíncrono registrado via `@OnWorkerEvent` roda fire-and-forget (a lib não aguarda a Promise) — confirmado via Context7 (`nestjs/bull` `bull.explorer.ts`); os testes de integração compensam isso fazendo polling do estado real (Redis `job.getState()`/`attemptsMade` e a linha do `Video` no Postgres) em vez de assumir sincronicidade.
 
 ### SI-03.16 — Reconciliation sweep (3 branches)
 - **Status:** pending

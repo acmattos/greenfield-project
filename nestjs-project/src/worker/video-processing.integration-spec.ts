@@ -225,7 +225,7 @@ describe('Video processing success — worker integration', () => {
     await cleanAllTables(dataSource);
   });
 
-  async function createValidVideo(durationSeconds: number): Promise<Video> {
+  async function createPendingVideo(): Promise<Video> {
     const user = await userRepository.save(
       userRepository.create({
         email: `ok_${randomUUID()}@example.com`,
@@ -241,6 +241,19 @@ describe('Video processing success — worker integration', () => {
     );
     const sourceStorageKey = randomUUID();
 
+    return videoRepository.save(
+      videoRepository.create({
+        channelId: channel.id,
+        title: 'Valid video test',
+        sourceStorageKey,
+      }),
+    );
+  }
+
+  async function uploadValidVideoFile(
+    sourceStorageKey: string,
+    durationSeconds: number,
+  ): Promise<void> {
     const localPath = `/tmp/${sourceStorageKey}.mp4`;
     await execFileAsync(process.env.FFMPEG_PATH || '/usr/local/bin/ffmpeg', [
       '-f',
@@ -269,14 +282,12 @@ describe('Video processing success — worker integration', () => {
         Body: fileBuffer,
       }),
     );
+  }
 
-    return videoRepository.save(
-      videoRepository.create({
-        channelId: channel.id,
-        title: 'Valid video test',
-        sourceStorageKey,
-      }),
-    );
+  async function createValidVideo(durationSeconds: number): Promise<Video> {
+    const video = await createPendingVideo();
+    await uploadValidVideoFile(video.sourceStorageKey, durationSeconds);
+    return video;
   }
 
   it('a valid video ends READY with all metadata fields and thumbnailStorageKey persisted, thumbnail present in storage', async () => {
@@ -345,6 +356,204 @@ describe('Video processing success — worker integration', () => {
     );
     const thumbnailBytes = await thumbnailObject.Body!.transformToByteArray();
     expect(thumbnailBytes.length).toBeGreaterThan(0);
+
+    await moduleRef.close();
+  }, 30000);
+});
+
+describe("@OnWorkerEvent('failed') — worker integration", () => {
+  let dataSource: DataSource;
+  let userRepository: Repository<User>;
+  let channelRepository: Repository<Channel>;
+  let videoRepository: Repository<Video>;
+  const config = storageConfig();
+
+  beforeAll(async () => {
+    dataSource = createTestDataSource(ALL_ENTITIES);
+    await dataSource.initialize();
+    userRepository = dataSource.getRepository(User);
+    channelRepository = dataSource.getRepository(Channel);
+    videoRepository = dataSource.getRepository(Video);
+  });
+
+  afterAll(async () => {
+    await dataSource.destroy();
+  });
+
+  beforeEach(async () => {
+    await cleanAllTables(dataSource);
+  });
+
+  // sourceStorageKey deliberately never uploaded to MinIO — every download
+  // attempt fails with a real, transient S3 "not found" error (not an
+  // UnrecoverableError), letting BullMQ's real retry mechanism run.
+  async function createVideoWithMissingSource(): Promise<Video> {
+    const user = await userRepository.save(
+      userRepository.create({
+        email: `retry_${randomUUID()}@example.com`,
+        password: 'hashed',
+      }),
+    );
+    const channel = await channelRepository.save(
+      channelRepository.create({
+        name: 'Chan',
+        nickname: `chan_${randomUUID().slice(0, 8)}`,
+        user_id: user.id,
+      }),
+    );
+
+    return videoRepository.save(
+      videoRepository.create({
+        channelId: channel.id,
+        title: 'Retry test',
+        sourceStorageKey: randomUUID(),
+      }),
+    );
+  }
+
+  it('a transient failure on attempt 1 does not write FAILED, and the job succeeds fully once the source becomes available', async () => {
+    const video = await createVideoWithMissingSource();
+
+    const moduleRef = await Test.createTestingModule({
+      imports: [WorkerModule],
+    }).compile();
+    const queue = moduleRef.get<Queue>(getQueueToken(VIDEO_PROCESSING_QUEUE));
+    const jobId = `process-video-${video.id}`;
+    const job = await queue.add(
+      'video.processing',
+      { videoId: video.id },
+      {
+        jobId,
+        attempts: 3,
+        // Explicit — the WorkerModule's own queue registration (unlike
+        // queue.module.ts, the producer side) has no defaultJobOptions, so
+        // without this the retry would fire with zero delay, defeating the
+        // point of this test (proving a genuine wait-then-retry window).
+        backoff: { type: 'exponential', delay: 1000 },
+      },
+    );
+
+    // Wait for attempt 1 to fail (attemptsMade becomes 1) before the source
+    // object is made available — this is the window that proves the retry
+    // is real, not a false positive from an already-successful first try.
+    const attempt1Deadline = Date.now() + 10000;
+    let attemptsMade = 0;
+    while (attemptsMade < 1 && Date.now() < attempt1Deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const polled = await queue.getJob(jobId);
+      attemptsMade = polled?.attemptsMade ?? 0;
+    }
+    expect(attemptsMade).toBeGreaterThanOrEqual(1);
+
+    const midState = await videoRepository.findOneBy({ id: video.id });
+    expect(midState!.processingStatus).toBe(VideoProcessingStatus.PROCESSING);
+
+    // Make the source available before the exponential-backoff retry fires.
+    const localPath = `/tmp/${video.sourceStorageKey}.mp4`;
+    await execFileAsync(process.env.FFMPEG_PATH || '/usr/local/bin/ffmpeg', [
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc=duration=2:size=64x64:rate=10',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=duration=2',
+      '-c:v',
+      'libx264',
+      '-c:a',
+      'aac',
+      '-movflags',
+      '+faststart',
+      '-y',
+      localPath,
+    ]);
+    const fileBuffer = await readFile(localPath);
+    const s3Client = new S3Client({
+      endpoint: config.endpoint,
+      forcePathStyle: true,
+      region: config.region,
+      credentials: {
+        accessKeyId: config.accessKeyId,
+        secretAccessKey: config.secretAccessKey,
+      },
+    });
+    await s3Client.send(
+      new PutObjectCommand({
+        Bucket: config.bucket,
+        Key: video.sourceStorageKey,
+        Body: fileBuffer,
+      }),
+    );
+
+    let state = await job.getState();
+    const finalDeadline = Date.now() + 20000;
+    while (
+      state !== 'completed' &&
+      state !== 'failed' &&
+      Date.now() < finalDeadline
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      state = await job.getState();
+    }
+    expect(state).toBe('completed');
+
+    const finalVideo = await videoRepository.findOneBy({ id: video.id });
+    expect(finalVideo!.processingStatus).toBe(VideoProcessingStatus.READY);
+
+    s3Client.destroy();
+    await moduleRef.close();
+  }, 30000);
+
+  it('all 3 attempts fail transiently: processingStatus only becomes FAILED after the last attempt is exhausted', async () => {
+    const video = await createVideoWithMissingSource();
+
+    const moduleRef = await Test.createTestingModule({
+      imports: [WorkerModule],
+    }).compile();
+    const queue = moduleRef.get<Queue>(getQueueToken(VIDEO_PROCESSING_QUEUE));
+    const jobId = `process-video-${video.id}`;
+    const job = await queue.add(
+      'video.processing',
+      { videoId: video.id },
+      {
+        jobId,
+        attempts: 3,
+        // See the sibling test above for why this must be explicit here.
+        backoff: { type: 'exponential', delay: 1000 },
+      },
+    );
+
+    // Wait until attempt 2 has failed but the job has not yet reached its
+    // final (3rd) attempt — proves FAILED is not written prematurely.
+    const midDeadline = Date.now() + 15000;
+    let polled = await queue.getJob(jobId);
+    while ((polled?.attemptsMade ?? 0) < 2 && Date.now() < midDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      polled = await queue.getJob(jobId);
+    }
+    expect(polled?.attemptsMade).toBeGreaterThanOrEqual(2);
+
+    const midVideo = await videoRepository.findOneBy({ id: video.id });
+    expect(midVideo!.processingStatus).not.toBe(VideoProcessingStatus.FAILED);
+
+    let state = await job.getState();
+    const finalDeadline = Date.now() + 20000;
+    while (
+      state !== 'completed' &&
+      state !== 'failed' &&
+      Date.now() < finalDeadline
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      state = await job.getState();
+    }
+    expect(state).toBe('failed');
+
+    const finalJob = await queue.getJob(jobId);
+    expect(finalJob!.attemptsMade).toBe(3);
+
+    const finalVideo = await videoRepository.findOneBy({ id: video.id });
+    expect(finalVideo!.processingStatus).toBe(VideoProcessingStatus.FAILED);
 
     await moduleRef.close();
   }, 30000);
