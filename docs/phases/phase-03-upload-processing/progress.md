@@ -1,7 +1,7 @@
 # phase-03-upload-processing — Progress
 
 **Status:** in_progress
-**SIs:** 9/19 completed
+**SIs:** 10/19 completed
 
 ### SI-03.1 — Infra: object storage (MinIO) + cliente S3
 - **Status:** completed
@@ -79,9 +79,12 @@
   - Erro de teste próprio (não de produção): meu primeiro rascunho do teste de integração criava uma `Queue` "solta" via `new Queue(name, {connection})`, sem as `defaultJobOptions` que só existem na instância registrada pelo `QueueModule` real — por isso `job.opts.attempts` vinha `0` em vez de `3`. Corrigido usando `Test.createTestingModule({imports:[QueueModule]})` + `getQueueToken()` para obter a Queue real via DI, em vez de duplicar a config manualmente no teste.
 
 ### SI-03.10 — Infra: binários FFmpeg/FFprobe na imagem do worker
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 2 passing (rodados dentro da imagem do worker)
+- **Observations:**
+  - Fonte escolhida para o Option C (TD-04): imagem `mwader/static-ffmpeg` (binários estáticos multi-arch), pinada por digest real resolvido via `docker pull`+`docker images --digests` (não um valor inventado) — `sha256:028fb402231d4f5f2223c67fca5d0abc04f5a38cffcbadf9844f06985e2259b8`. Binários copiados via multi-stage `COPY --from=` para `/usr/local/bin/ffmpeg`/`/usr/local/bin/ffprobe` (paths já presentes em `.env` como `FFMPEG_PATH`/`FFPROBE_PATH`, ainda não validados no Joi schema — isso é escopo da SI que efetivamente consome essas envs).
+  - Criado `Dockerfile.worker` (novo) + serviço `worker` no `compose.yaml` (`depends_on` db/minio/redis saudáveis) — infraestrutura mínima necessária para o smoke test rodar; o bootstrap real do processo (entrypoint Node, processor) é escopo da SI-03.11.
+  - Confirmado ativamente (não só por construção) que a imagem da API não tem os binários: `docker compose exec nestjs-api which ffmpeg` retorna exit 1.
 
 ### SI-03.11 — Bootstrap do worker: entrypoint, processor, PROCESSING/no-op
 - **Status:** pending

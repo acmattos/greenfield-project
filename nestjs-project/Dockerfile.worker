@@ -1,0 +1,17 @@
+# FFmpeg/FFprobe static binaries, pinned by image digest (never a floating
+# tag) — per upload-processing/TD-04 Option C. linux/amd64, consistent with
+# the node:25.6.0-slim base below.
+FROM mwader/static-ffmpeg@sha256:028fb402231d4f5f2223c67fca5d0abc04f5a38cffcbadf9844f06985e2259b8 AS ffmpeg
+
+FROM node:25.6.0-slim
+
+RUN apt update && apt install -y procps curl
+
+COPY --from=ffmpeg /ffmpeg /usr/local/bin/ffmpeg
+COPY --from=ffmpeg /ffprobe /usr/local/bin/ffprobe
+
+WORKDIR /home/node/app
+
+USER node
+
+CMD [ "tail", "-f", "/dev/null" ]
