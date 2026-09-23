@@ -2,7 +2,10 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import type { ConfigType } from '@nestjs/config';
 import queueConfig from '../config/queue.config';
-import { VIDEO_PROCESSING_QUEUE } from './queue.constants';
+import {
+  VIDEO_PROCESSING_JOB_OPTIONS,
+  VIDEO_PROCESSING_QUEUE,
+} from './queue.constants';
 
 @Module({
   imports: [
@@ -22,12 +25,7 @@ import { VIDEO_PROCESSING_QUEUE } from './queue.constants';
     }),
     BullModule.registerQueue({
       name: VIDEO_PROCESSING_QUEUE,
-      defaultJobOptions: {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 1000 },
-        removeOnComplete: { age: 3600, count: 1000 },
-        removeOnFail: { age: 604800, count: 5000 },
-      },
+      defaultJobOptions: VIDEO_PROCESSING_JOB_OPTIONS,
     }),
   ],
   exports: [BullModule],

@@ -40,4 +40,12 @@ export const envValidationSchema = Joi.object({
     .integer()
     .min(0)
     .default(3600000),
+  WORKER_RECONCILIATION_INTERVAL_MS: Joi.number()
+    .integer()
+    .positive()
+    .default(300000),
+  WORKER_RECONCILIATION_GRACE_PERIOD_MS: Joi.number()
+    .integer()
+    .min(0)
+    .default(3600000),
 });

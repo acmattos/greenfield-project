@@ -1,7 +1,7 @@
 # phase-03-upload-processing — Progress
 
 **Status:** in_progress
-**SIs:** 15/19 completed
+**SIs:** 16/19 completed
 
 ### SI-03.1 — Infra: object storage (MinIO) + cliente S3
 - **Status:** completed
@@ -134,9 +134,14 @@
   - Handler assíncrono registrado via `@OnWorkerEvent` roda fire-and-forget (a lib não aguarda a Promise) — confirmado via Context7 (`nestjs/bull` `bull.explorer.ts`); os testes de integração compensam isso fazendo polling do estado real (Redis `job.getState()`/`attemptsMade` e a linha do `Video` no Postgres) em vez de assumir sincronicidade.
 
 ### SI-03.16 — Reconciliation sweep (3 branches)
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 5 integração (branches 1/2/3 + ciclo completo + corrida real) + 22 de regressão confirmadas (queue.module, orphan-sweep, video-processing.processor)
+- **Observations:**
+  - Achado real: os jobs reenfileirados pela sweep usavam `queue.add()` sem `attempts`/`backoff` explícitos. A fila do `WorkerModule` (onde o `ReconciliationSweepService` vive) não tem `defaultJobOptions` — diferente da fila producer em `queue.module.ts` — então um job reenfileirado pela sweep silenciosamente perderia a resiliência de retry (attempts:3 + backoff exponencial) que o enqueue original tem. Corrigido extraindo `VIDEO_PROCESSING_JOB_OPTIONS` (attempts, backoff, removeOnComplete, removeOnFail) como constante compartilhada em `queue.constants.ts`, usada tanto por `queue.module.ts` quanto pelo `enqueueProcessing` da sweep — mesmo contrato de resiliência para os dois producers, per `upload-processing/TD-11`.
+  - Branch 3 (reparo de FAILED perdido) testado sem depender de timing real do `@OnWorkerEvent('failed')` ao vivo: o `Video` de teste é marcado `PROCESSING` diretamente via repository, e o job real que falha em BullMQ tem `job.data.videoId` apontando para um UUID **inexistente** (não o vídeo de teste) — assim o listener ao vivo (que roda de verdade, competindo com o processo PID-1 do container) escreve `FAILED` no id inexistente (0 linhas afetadas, tolerado por design), nunca tocando o vídeo real sendo testado. Isso isola deterministicamente "o listener não rodou para este vídeo" sem qualquer race artificial.
+  - Env var solta encontrada em `.env` (`TUS_RECONCILIATION_INTERVAL_MS`, sem validação no Joi schema, sob o comentário errado de "tus protocol" — a sweep roda no processo **worker**, não no tus/API) — renomeada para `WORKER_RECONCILIATION_INTERVAL_MS` e movida para a seção Worker; adicionado também `WORKER_RECONCILIATION_GRACE_PERIOD_MS` (default 3600000 = 1h, per TD-11's revision "on the order of an hour"). Ambas agora validadas em `env.validation.ts` e lidas via `worker.config.ts`.
+  - Bug de teste (não de produção), achado após rodar os testes: dois dos cinco testes ("ciclo completo" e "corrida real") criavam o `Video` com `sourceStorageKey: randomUUID()` mas faziam upload do arquivo real na chave `video.id` — chaves diferentes, então o processor real baixava da chave errada e falhava nas 3 tentativas (~3.4s até `FAILED`). Corrigido com um helper `createUploadableVideo` que pré-gera o UUID e usa o mesmo valor como `id` E `sourceStorageKey`, replicando a correlação real de produção (`upload-processing/TD-11`: `sourceStorageKey` É `Video.id`, não um valor derivado). O branch 2's HeadObjectCommand (que sonda `Key: video.id` diretamente, não `sourceStorageKey`) mascarou esse mesmo bug de setup no primeiro teste daquele branch, sem quebrar o teste.
+  - Registrado via `OnApplicationBootstrap` (mesmo padrão do `OrphanSweepService` de TD-07), com `setInterval` para reexecução periódica; o handle do interval é armazenado mas sua limpeza no shutdown fica para a SI-03.18, conforme o próprio plano já determina.
 
 ### SI-03.17 — Documentação: CLAUDE.md (nestjs-project + raiz)
 - **Status:** pending

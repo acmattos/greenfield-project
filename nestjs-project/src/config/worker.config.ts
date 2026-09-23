@@ -10,4 +10,12 @@ export default registerAs('worker', () => ({
     process.env.WORKER_ORPHAN_SWEEP_THRESHOLD_MS || '3600000',
     10,
   ),
+  reconciliationIntervalMs: parseInt(
+    process.env.WORKER_RECONCILIATION_INTERVAL_MS || '300000',
+    10,
+  ),
+  reconciliationGracePeriodMs: parseInt(
+    process.env.WORKER_RECONCILIATION_GRACE_PERIOD_MS || '3600000',
+    10,
+  ),
 }));
