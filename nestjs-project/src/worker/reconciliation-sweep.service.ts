@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   OnApplicationBootstrap,
+  OnModuleDestroy,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { ConfigType } from '@nestjs/config';
@@ -20,10 +21,10 @@ import { INTERNAL_S3_CLIENT } from '../storage/storage.constants';
 import { Video, VideoProcessingStatus } from '../videos/entities/video.entity';
 import { VideoProcessingProcessor } from './video-processing.processor';
 
-// Registered via a lifecycle hook (this SI); the interval handle is cleared
-// on graceful shutdown by SI-03.18, not here.
 @Injectable()
-export class ReconciliationSweepService implements OnApplicationBootstrap {
+export class ReconciliationSweepService
+  implements OnApplicationBootstrap, OnModuleDestroy
+{
   private readonly logger = new Logger(ReconciliationSweepService.name);
   private intervalHandle?: NodeJS.Timeout;
 
@@ -47,6 +48,16 @@ export class ReconciliationSweepService implements OnApplicationBootstrap {
         this.logger.error(`Reconciliation sweep failed: ${error.message}`);
       });
     }, this.worker.reconciliationIntervalMs);
+  }
+
+  // app.close() alone never clears intervals (confirmed via NestJS docs) —
+  // without this, the worker process would hang open after a SIGTERM even
+  // once every other shutdown hook (BullMQ worker/Redis close) completes.
+  onModuleDestroy(): void {
+    if (this.intervalHandle) {
+      clearInterval(this.intervalHandle);
+      this.intervalHandle = undefined;
+    }
   }
 
   async sweep(): Promise<void> {

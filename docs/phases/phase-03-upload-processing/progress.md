@@ -1,7 +1,7 @@
 # phase-03-upload-processing — Progress
 
 **Status:** in_progress
-**SIs:** 17/19 completed
+**SIs:** 18/19 completed
 
 ### SI-03.1 — Infra: object storage (MinIO) + cliente S3
 - **Status:** completed
@@ -152,9 +152,15 @@
   - Achado fora de escopo (não corrigido nesta SI, apenas observado): `.env` tem uma variável `TUS_UPLOAD_EXPIRATION_MS=86400000` que não é lida por nenhum código (`grep` não encontrou nenhum consumidor), não está validada em `env.validation.ts`, e não está em `.env.example` — provável resíduo não utilizado. Não documentada aqui por não corresponder a nenhum comportamento real; recomenda-se remover numa limpeza futura fora do escopo desta SI.
 
 ### SI-03.18 — Worker: graceful shutdown
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 1 integração (novo) + 33 de regressão confirmadas (22 unit + 11 integração)
+- **Observations:**
+  - `app.enableShutdownHooks()` adicionado em `src/worker/main.ts` — o `@nestjs/bullmq`'s `BullExplorer.onApplicationShutdown` já fecha automaticamente todo `Worker`/conexão Redis registrado (confirmado lendo `node_modules/@nestjs/bullmq/dist/bull.explorer.js`); nenhum código manual foi necessário para essa parte, per Context7/leitura do código-fonte instalado.
+  - `ReconciliationSweepService` ganhou `onModuleDestroy()` limpando o `setInterval` da sweep. Achado via leitura do código-fonte do NestJS (`node_modules/@nestjs/core/nest-application-context.js`): o comportamento default de `enableShutdownHooks()` (sem `useProcessExit`) roda todos os hooks e depois **reenvia o próprio sinal** ao processo (não chama `process.exit()`) — então tecnicamente o processo termina de qualquer forma mesmo sem limpar o interval. A limpeza continua necessária pelo motivo real: sem ela, a sweep poderia disparar uma nova tentativa **durante** a janela assíncrona em que os hooks de shutdown ainda estão rodando (fila/DB sendo fechados), lançando uma exceção não tratada contra uma conexão já meio-fechada — exatamente o que o AC "sem exceções não tratadas" proíbe.
+  - Teste de integração (`worker-shutdown.integration-spec.ts`) spawna um **segundo** processo `node dist/worker/main.js` real (não o PID-1 do container) dentro do mesmo container `worker`, aguarda seu bootstrap completo (log da `WorkerCapacityCheckService`), envia `SIGTERM`, e confirma saída limpa sem exceções — nunca mexe no processo PID-1 real do container.
+  - Achado empírico (via debug manual: `docker compose exec -d worker ...` + inspeção de `ps aux`): bootstrapar um SEGUNDO contexto Nest completo, concorrente com o processo PID-1 já rodando no mesmo container, é medidamente mais lento que uma instância isolada (~60-70s observados sob contenção de recursos deste ambiente, vs. poucas centenas de ms para uma instância solitária) — não é um travamento, apenas contenção real de CPU/IO. Timeout de leitura de stdout do teste ajustado de 15s para 90s, e o timeout do teste em si para 150s, para acomodar isso de forma realista.
+  - Bug de teste (não de produção), 2 iterações: (1) minha primeira asserção verificava `exit.code === 0`, mas o comportamento *default* documentado do NestJS (confirmado lendo o código-fonte) é reenviar o sinal original em vez de chamar `process.exit()` — resultando em `code: null, signal: 'SIGTERM'`, não `code: 0`. Corrigido a asserção para o shape real e correto. (2) minha segunda tentativa adicionou um "piso" de tempo decorrido (`> 50ms`) como prova indireta de que os hooks realmente rodaram antes da saída — falhou com 23ms reais, porque o job de teste já tinha terminado de processar antes do `SIGTERM` chegar, então `worker.close()` não teve nada para esperar (comportamento correto, não um bug). Removida essa asserção frágil; a prova real e direta já estava nas duas asserções anteriores (`exit.signal === 'SIGTERM'` + nenhuma exceção não tratada nos logs) — se qualquer hook tivesse travado, o teste teria estourado o timeout de 150s em vez de produzir esse exit event limpo.
+  - Um processo `node dist/worker/main.js` órfão (de uma execução anterior do teste que falhou antes de eu adicionar o bloco `try/finally`) ficou rodando no container durante a investigação — limpo manualmente via `kill`; o teste final já inclui `try/finally` garantindo que o processo filho spawnado é sempre encerrado, mesmo em caso de falha de asserção.
 
 ### SI-03.19 — tus termination (DELETE) escopo restrito
 - **Status:** pending
