@@ -1,7 +1,7 @@
 # phase-03-upload-processing — Progress
 
 **Status:** in_progress
-**SIs:** 6/19 completed
+**SIs:** 7/19 completed
 
 ### SI-03.1 — Infra: object storage (MinIO) + cliente S3
 - **Status:** completed
@@ -53,9 +53,15 @@
   - Teste E2E autorado via Step 3a (JIT spec read) do `/implement`, a partir de `nestjs-project/specs/video-delivery.plan.md` — 1 `describe('videos')` com 10 `test()`/`it.each()` (não describes aninhados por grupo, per convenção do pipeline spec-driven).
 
 ### SI-03.7 — Módulo de upload: tus mount + criação de rascunho
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 16 passing (9 unit + 7 integration, incluindo teste real de resumabilidade com destruição de socket no meio do PATCH)
+- **Observations:**
+  - Assinatura real de `onUploadCreate`/`onIncomingRequest` na versão instalada (`@tus/server@1.x`) diverge da doc do Context7: recebe `(req, res, upload)` e retorna `{ res, metadata? }` (não `(req, upload) => { metadata? }` como a doc mostrava) — confirmado direto no `.d.ts` instalado, já que o `tsc --noEmit` pegou o erro imediatamente.
+  - `Server.handle(req, res)` aceita só 2 argumentos (nunca chama `next()` — sempre resolve a resposta ele mesmo); o `TusMiddleware` só repassa `next` em caso de rejeição inesperada da Promise (`.catch(next)`).
+  - Rotas do middleware exigem 2 entradas no `forRoutes` (Express 5 é mais estrito com wildcards): `'videos/upload'` (POST de criação) + `'videos/upload/{*splat}'` (PATCH/HEAD/DELETE subsequentes) — sintaxe `{*splat}` confirmada via doc oficial NestJS 11.
+  - Criado `extractAuthenticatedUserId` (`src/upload/jwt-from-request.util.ts`) como helper standalone reutilizável — usado por `onUploadCreate` (esta SI) e será reaproveitado por `onIncomingRequest` na SI-03.8, evitando duplicar a lógica de verificação JWT fora do pipeline de guards do Nest.
+  - Nesta SI isoladamente, `onUploadCreate` extrai/verifica o JWT mas não trata formalmente "token ausente/inválido" com um 401 dedicado (isso é responsabilidade exclusiva de `onIncomingRequest`, per Error Catalog do plano, que roda ANTES na cadeia de hooks tus a partir da SI-03.8) — comportamento transitório aceitável já que SI-03.8 é a próxima SI desta mesma sessão.
+  - `Upload-Metadata` decodificado usa `Buffer.from(...).toString('base64')` por par chave/valor nos testes — formato confirmado do protocolo tus.
 
 ### SI-03.8 — Auth boundary em todos os requests tus
 - **Status:** pending

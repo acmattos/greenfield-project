@@ -40,6 +40,8 @@
     "@nestjs/swagger": "^11.4.2",
     "@nestjs/throttler": "^6.5.0",
     "@nestjs/typeorm": "^11.0.1",
+    "@tus/s3-store": "^1.9.1",
+    "@tus/server": "^1.10.2",
     "argon2": "^0.41.1",
     "bullmq": "^5.81.5",
     "class-transformer": "^0.5.1",
