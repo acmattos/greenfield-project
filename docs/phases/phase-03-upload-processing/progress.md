@@ -1,7 +1,7 @@
 # phase-03-upload-processing — Progress
 
 **Status:** in_progress
-**SIs:** 16/19 completed
+**SIs:** 17/19 completed
 
 ### SI-03.1 — Infra: object storage (MinIO) + cliente S3
 - **Status:** completed
@@ -144,9 +144,12 @@
   - Registrado via `OnApplicationBootstrap` (mesmo padrão do `OrphanSweepService` de TD-07), com `setInterval` para reexecução periódica; o handle do interval é armazenado mas sua limpeza no shutdown fica para a SI-03.18, conforme o próprio plano já determina.
 
 ### SI-03.17 — Documentação: CLAUDE.md (nestjs-project + raiz)
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** no tests (SI de documentação)
+- **Observations:**
+  - `nestjs-project/CLAUDE.md`: serviços `minio`/`redis`/`worker` documentados na lista de Services (portas, healthchecks); novo comando de verificação de prontidão para MinIO/Redis; nova seção "Worker (Video Processing)" documentando a exigência de rebuild+restart antes de qualquer teste de integração (lição da SI-03.13) e o toolchain FFmpeg/FFprobe vendorizado (só existe na imagem do worker); nova seção "Environment Variables" cobrindo todos os grupos introduzidos pela fase (Storage, Queue, Upload limits, Worker).
+  - `CLAUDE.md` raiz: `Message Queue (TBD)` atualizado para `Message Queue (Redis/BullMQ)`; nota adicionada confirmando que Object Storage, Message Queue e Video Worker estão implementados a partir da fase `upload-processing`.
+  - Achado fora de escopo (não corrigido nesta SI, apenas observado): `.env` tem uma variável `TUS_UPLOAD_EXPIRATION_MS=86400000` que não é lida por nenhum código (`grep` não encontrou nenhum consumidor), não está validada em `env.validation.ts`, e não está em `.env.example` — provável resíduo não utilizado. Não documentada aqui por não corresponder a nenhum comportamento real; recomenda-se remover numa limpeza futura fora do escopo desta SI.
 
 ### SI-03.18 — Worker: graceful shutdown
 - **Status:** pending

@@ -34,6 +34,10 @@ docker compose exec nestjs-api npm run start:dev
 Services:
 - `nestjs-api` — NestJS API, port `3000`
 - `db` — PostgreSQL 17, port `5432`, database `streamtube`, user/password `streamtube`
+- `mailpit` — SMTP test server, port `1025` (SMTP), web UI on `8025`
+- `minio` — S3-compatible object storage (video files + thumbnails, `upload-processing/TD-01`), S3 API on port `9000`, console on `9001`, healthcheck `mc ready local`
+- `redis` — Background job queue backend for BullMQ (`upload-processing/TD-03`), no host port exposed (internal Compose network only), healthcheck `redis-cli ping`
+- `worker` — Standalone video processing worker (FFmpeg/FFprobe, `upload-processing/TD-03`/`TD-04`), no host port, healthcheck via `pgrep -f 'dist/worker/main.js'`, dedicated `worker-temp` named volume for per-job downloads (reserved capacity checked at startup — fails fast if `WORKER_CONCURRENCY × MAX_UPLOAD_BYTES + WORKER_TEMP_MARGIN_BYTES` exceeds free space)
 
 All verification and teardown commands run on the **host machine**:
 
@@ -44,9 +48,16 @@ curl http://localhost:3000
 # Verify PostgreSQL is ready (runs inside the db container)
 docker compose exec db pg_isready -U streamtube
 
+# Verify MinIO is ready
+docker compose exec minio mc ready local
+
+# Verify Redis is ready (expect PONG)
+docker compose exec redis redis-cli ping
+
 # Check container logs
 docker compose logs nestjs-api
 docker compose logs db
+docker compose logs worker
 
 # Tear down the entire environment
 docker compose down
@@ -95,6 +106,28 @@ Parallel execution causes FK violations, deadlocks, and cross-suite contaminatio
 
 During active development, run only the tests related to the file being changed (`npm test -- path/to/file.spec.ts`). Before declaring a task done, run the full suite — see the global `CLAUDE.md` → "Definition of Done (Technical)".
 
+## Worker (Video Processing)
+
+The `worker` service is a **standalone** NestJS application context (`NestFactory.createApplicationContext`, own `WorkerModule` — not `AppModule`), consuming the `video-processing` BullMQ queue. It runs `node dist/worker/main.js` as its container's PID 1 — a long-running process that does **not** hot-reload.
+
+**Any change under `src/worker/**` (or anything it depends on) requires an explicit rebuild + restart before it takes effect:**
+
+```bash
+docker compose exec nestjs-api npm run build   # compiles both dist/main.js and dist/worker/main.js
+docker compose restart worker
+docker compose ps worker                       # wait for "healthy" before running worker tests
+```
+
+Skipping this step leaves the container running stale code — worker integration tests would then silently exercise old logic instead of the change just made, since the container's own worker process competes for jobs on the same real Redis queue as any test-instantiated worker.
+
+**FFmpeg/FFprobe** are vendored (static binaries, `upload-processing/TD-04`) only in the `worker` image, at `FFMPEG_PATH`/`FFPROBE_PATH` (default `/usr/local/bin/ffmpeg` / `/usr/local/bin/ffprobe`) — not present in `nestjs-api`. Any test that spawns a real FFmpeg/FFprobe process, or exercises the real `video-processing` queue end-to-end, **must** run inside the `worker` container, not `nestjs-api`:
+
+```bash
+docker compose exec worker npx jest src/worker/video-processing.integration-spec.ts --runInBand
+```
+
+**Resumable upload (tus)** is mounted on the `nestjs-api` service at `/videos/upload` (`upload-processing/TD-05`/`TD-11`), handling `POST`/`PATCH`/`HEAD`/`DELETE` against `/videos/upload` and `/videos/upload/{id}` — `{id}` is the same UUID used as `Video.id` and the object's S3 key. It runs outside Nest's own guard pipeline (mounted as a plain sub-app via `@tus/server`), so authentication/ownership is enforced by the `onIncomingRequest` hook, not a Nest guard.
+
 ## Long-running Processes
 
 Commands that never exit (dev server, watch modes) must be run in background in the Bash tool — otherwise the agent blocks indefinitely waiting for the process to return.
@@ -123,6 +156,21 @@ These settings are required in `package.json` (jest config) and `test/jest-e2e.j
 - `testRegex: '.*\\.(spec|integration-spec)\\.ts$'` — covers both unit (`*.spec.ts`) and integration (`*.integration-spec.ts`) suffixes.
 
 Do not add new test-file suffixes; if a new test type is needed, update the regex deliberately.
+
+## Environment Variables
+
+All variables are validated at startup via Joi (`src/config/env.validation.ts`); `.env.example` is kept in sync and is the reference for every default value.
+
+- **Object storage (MinIO — `upload-processing/TD-01`/`TD-02`):** `STORAGE_ENDPOINT` (internal Compose URL, e.g. `http://minio:9000`), `STORAGE_PUBLIC_ENDPOINT` (browser-reachable URL used for signed URLs), `STORAGE_REGION`, `STORAGE_BUCKET`, `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY`, `STORAGE_PRESIGNED_URL_TTL_SECONDS`.
+- **Background job queue (Redis/BullMQ — `upload-processing/TD-03`):** `REDIS_HOST`, `REDIS_PORT`.
+- **Upload limits (`upload-processing/TD-05`):** `MAX_UPLOAD_BYTES` — hard ceiling for a single upload, also used to size the worker's reserved temp-disk capacity.
+- **Worker (`upload-processing/TD-03`/`TD-04`/`TD-07`/`TD-11`):**
+  - `WORKER_CONCURRENCY` — jobs processed in parallel per worker instance.
+  - `WORKER_TEMP_MARGIN_BYTES` — safety margin added on top of `WORKER_CONCURRENCY × MAX_UPLOAD_BYTES` for the startup capacity check.
+  - `WORKER_ORPHAN_SWEEP_THRESHOLD_MS` — age after which a leftover job temp directory (crashed/killed worker) is removed at startup.
+  - `WORKER_RECONCILIATION_INTERVAL_MS` — how often the reconciliation sweep re-runs (stuck-upload recovery + lost-FAILED repair).
+  - `WORKER_RECONCILIATION_GRACE_PERIOD_MS` — how long an `UPLOADING` video with no `uploadCompletedAt` must be untouched before the sweep probes storage directly for it.
+  - `FFMPEG_PATH` / `FFPROBE_PATH` — vendored binary paths inside the `worker` image only.
 
 ## Environment File Conventions
 
