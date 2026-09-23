@@ -36,4 +36,8 @@ export const envValidationSchema = Joi.object({
   MAX_UPLOAD_BYTES: Joi.number().integer().positive().default(10737418240),
   WORKER_CONCURRENCY: Joi.number().integer().min(1).default(1),
   WORKER_TEMP_MARGIN_BYTES: Joi.number().integer().min(0).default(536870912),
+  WORKER_ORPHAN_SWEEP_THRESHOLD_MS: Joi.number()
+    .integer()
+    .min(0)
+    .default(3600000),
 });

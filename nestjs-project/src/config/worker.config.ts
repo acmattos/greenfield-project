@@ -6,4 +6,8 @@ export default registerAs('worker', () => ({
     process.env.WORKER_TEMP_MARGIN_BYTES || '536870912',
     10,
   ),
+  orphanSweepThresholdMs: parseInt(
+    process.env.WORKER_ORPHAN_SWEEP_THRESHOLD_MS || '3600000',
+    10,
+  ),
 }));

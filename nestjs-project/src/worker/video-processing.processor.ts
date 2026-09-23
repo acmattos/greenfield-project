@@ -5,6 +5,7 @@ import { Job, UnrecoverableError } from 'bullmq';
 import { Repository } from 'typeorm';
 import { VIDEO_PROCESSING_QUEUE } from '../queue/queue.constants';
 import { Video, VideoProcessingStatus } from '../videos/entities/video.entity';
+import { WorkerTempStorageService } from './worker-temp-storage.service';
 
 // Read directly from process.env — @Processor's worker options are resolved
 // at class-decoration time (module import), before the Nest DI container
@@ -19,6 +20,7 @@ export class VideoProcessingProcessor extends WorkerHost {
   constructor(
     @InjectRepository(Video)
     private readonly videoRepository: Repository<Video>,
+    private readonly tempStorage: WorkerTempStorageService,
   ) {
     super();
   }
@@ -52,7 +54,16 @@ export class VideoProcessingProcessor extends WorkerHost {
       { processingStatus: VideoProcessingStatus.PROCESSING },
     );
 
-    // Free-space preflight + download + FFprobe + thumbnail + READY
-    // transition: SI-03.12 through SI-03.14.
+    const jobId = String(job.id);
+    try {
+      await this.tempStorage.downloadToTempDir(jobId, video.sourceStorageKey);
+
+      // FFprobe validation + metadata/thumbnail extraction + READY
+      // transition: SI-03.13, SI-03.14.
+    } finally {
+      // Runs regardless of outcome — never leaves a job's temp directory
+      // behind, per upload-processing/TD-07.
+      await this.tempStorage.cleanup(jobId);
+    }
   }
 }

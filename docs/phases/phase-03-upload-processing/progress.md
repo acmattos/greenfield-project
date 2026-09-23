@@ -1,7 +1,7 @@
 # phase-03-upload-processing — Progress
 
 **Status:** in_progress
-**SIs:** 11/19 completed
+**SIs:** 12/19 completed
 
 ### SI-03.1 — Infra: object storage (MinIO) + cliente S3
 - **Status:** completed
@@ -98,9 +98,13 @@
   - Serviço `worker` adicionado ao `compose.yaml` com `command: node dist/worker/main.js` (diferente do padrão `tail -f /dev/null` da API — o worker roda o processo real, não fica ocioso para exec manual), volume dedicado `worker-temp:/tmp/videos`, healthcheck de processo (`pgrep`), `depends_on` com `service_healthy` em db/minio/redis.
 
 ### SI-03.12 — Worker: download para temp dir com preflight e limpeza
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 8 unit + 2 integração
+- **Observations:**
+  - Achado retroativo da SI-03.11: `.env` tinha `WORKER_TEMP_OVERHEAD_BYTES` (nome antigo, herdado da tentativa descartada), mas o plano e meu código sempre usaram `WORKER_TEMP_MARGIN_BYTES` — o valor default (536870912) coincidia, mascarando a divergência de nome (a var errada nunca era lida; o fallback hardcoded sempre "salvava"). Corrigido `.env`; `.env.example` também recebeu as vars `WORKER_*`/`FFMPEG_PATH`/`FFPROBE_PATH` que faltavam desde a SI-03.10/03.11.
+  - Bug real: `WorkerTempStorageService.downloadToTempDir` chamava `statfs(WORKER_TEMP_DIR)` sem garantir que o diretório existisse primeiro — funcionava no container `worker` real só porque `WorkerCapacityCheckService` (SI-03.11) já tinha criado o diretório durante o bootstrap; nos testes (que instanciam o serviço isoladamente) isso quebrava com `ENOENT`. Corrigido tornando o serviço autocontido (`mkdir` do diretório pai antes do `statfs`, não dependente de outro serviço ter rodado antes).
+  - `jest.spyOn` não funciona em named exports de módulos nativos do Node (`fs/promises`'s `statfs` é não-configurável) — `TypeError: Cannot redefine property`. Corrigido com `jest.mock('fs/promises', () => ({...jest.requireActual(...), statfs: jest.fn(...)}))`, mantendo `mkdir`/`rm`/`readFile` reais e só `statfs` mockável.
+  - Teste de integração da checagem de espaço insuficiente usa `HeadObjectCommand` real contra MinIO (ContentLength real) mas `statfs` mockado com baixo espaço — simular exaustão real de disco num test run não é prático.
 
 ### SI-03.13 — Worker: validação autoritativa de formato via FFprobe
 - **Status:** pending
