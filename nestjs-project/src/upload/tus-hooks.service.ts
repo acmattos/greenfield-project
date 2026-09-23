@@ -1,10 +1,13 @@
 import { IncomingMessage, ServerResponse } from 'http';
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
+import type { Queue } from 'bullmq';
 import { Repository } from 'typeorm';
 import type { Upload } from '@tus/server';
 import { Channel } from '../channels/entities/channel.entity';
+import { VIDEO_PROCESSING_QUEUE } from '../queue/queue.constants';
 import { Video } from '../videos/entities/video.entity';
 import { extractAuthenticatedUserId } from './jwt-from-request.util';
 import { resolveTitle } from './resolve-title.util';
@@ -23,6 +26,8 @@ export class TusHooksService {
     private readonly videoRepository: Repository<Video>,
     @InjectRepository(Channel)
     private readonly channelRepository: Repository<Channel>,
+    @InjectQueue(VIDEO_PROCESSING_QUEUE)
+    private readonly videoProcessingQueue: Queue,
   ) {}
 
   async onUploadCreate(
@@ -33,6 +38,27 @@ export class TusHooksService {
     this.assertSupportedFormat(upload.metadata);
     const channel = await this.resolveAuthenticatedChannel(req);
     await this.createDraftVideo(upload, channel);
+    return { res };
+  }
+
+  async onUploadFinish(
+    _req: IncomingMessage,
+    res: ServerResponse,
+    upload: Upload,
+  ): Promise<{ res: ServerResponse }> {
+    // uploadCompletedAt is written first — a plain, durable Postgres write,
+    // independent of Redis/BullMQ availability (per upload-processing/TD-11).
+    await this.videoRepository.update(
+      { id: upload.id },
+      { uploadCompletedAt: new Date() },
+    );
+
+    await this.videoProcessingQueue.add(
+      'video.processing',
+      { videoId: upload.id },
+      { jobId: `process-video-${upload.id}` },
+    );
+
     return { res };
   }
 

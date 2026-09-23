@@ -1,5 +1,6 @@
 import { IncomingMessage, ServerResponse } from 'http';
 import { JwtService } from '@nestjs/jwt';
+import type { Queue } from 'bullmq';
 import { Repository } from 'typeorm';
 import type { Upload } from '@tus/server';
 import { Channel } from '../channels/entities/channel.entity';
@@ -30,8 +31,14 @@ function fakeUpload(overrides: {
 
 describe('TusHooksService', () => {
   let jwtService: { verifyAsync: jest.Mock };
-  let videoRepository: { create: jest.Mock; save: jest.Mock; findOne: jest.Mock };
+  let videoRepository: {
+    create: jest.Mock;
+    save: jest.Mock;
+    findOne: jest.Mock;
+    update: jest.Mock;
+  };
   let channelRepository: { findOneBy: jest.Mock };
+  let videoProcessingQueue: { add: jest.Mock };
   let service: TusHooksService;
   const res = {} as ServerResponse;
   const AUTH_HEADER = 'Bearer valid-token';
@@ -42,13 +49,16 @@ describe('TusHooksService', () => {
       create: jest.fn((x) => x),
       save: jest.fn((x) => Promise.resolve(x)),
       findOne: jest.fn(),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
     };
     channelRepository = { findOneBy: jest.fn() };
+    videoProcessingQueue = { add: jest.fn().mockResolvedValue({}) };
 
     service = new TusHooksService(
       jwtService as unknown as JwtService,
       videoRepository as unknown as Repository<Video>,
       channelRepository as unknown as Repository<Channel>,
+      videoProcessingQueue as unknown as Queue,
     );
   });
 
@@ -163,6 +173,41 @@ describe('TusHooksService', () => {
           sourceStorageKey: 'the-upload-id',
           channelId: 'channel-1',
         }),
+      );
+    });
+  });
+
+  describe('onUploadFinish', () => {
+    it('persists uploadCompletedAt before enqueueing the job', async () => {
+      const callOrder: string[] = [];
+      videoRepository.update.mockImplementation(async () => {
+        callOrder.push('update');
+        return { affected: 1 };
+      });
+      videoProcessingQueue.add.mockImplementation(async () => {
+        callOrder.push('enqueue');
+        return {};
+      });
+
+      const upload = fakeUpload({ id: 'video-1' });
+      await service.onUploadFinish(fakeRequest(AUTH_HEADER), res, upload);
+
+      expect(callOrder).toEqual(['update', 'enqueue']);
+      expect(videoRepository.update).toHaveBeenCalledWith(
+        { id: 'video-1' },
+        { uploadCompletedAt: expect.any(Date) },
+      );
+    });
+
+    it('enqueues exactly one video.processing job with a deterministic jobId', async () => {
+      const upload = fakeUpload({ id: 'video-1' });
+      await service.onUploadFinish(fakeRequest(AUTH_HEADER), res, upload);
+
+      expect(videoProcessingQueue.add).toHaveBeenCalledTimes(1);
+      expect(videoProcessingQueue.add).toHaveBeenCalledWith(
+        'video.processing',
+        { videoId: 'video-1' },
+        { jobId: 'process-video-video-1' },
       );
     });
   });

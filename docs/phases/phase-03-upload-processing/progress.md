@@ -1,7 +1,7 @@
 # phase-03-upload-processing — Progress
 
 **Status:** in_progress
-**SIs:** 8/19 completed
+**SIs:** 9/19 completed
 
 ### SI-03.1 — Infra: object storage (MinIO) + cliente S3
 - **Status:** completed
@@ -72,9 +72,11 @@
   - `Server.handle(req,res)` real (código-fonte lido) não implementa `onIncomingRequest` no nível do `Server` — cada `Handler` (Post/Patch/Head/Delete/Get) o invoca individualmente, cada um resolvendo `id` à sua própria maneira; confirmado empiricamente, não presumido a partir do `.d.ts`.
 
 ### SI-03.9 — Enfileiramento do job ao concluir upload
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 17 unit (arquivo compartilhado com SI-03.7/03.8) + 2 integração
+- **Observations:**
+  - Achado e limpo `nestjs-project/dist/` — build output obsoleto (gitignored, nunca commitado) da implementação anterior descartada (via git reflog, achada na SI-03.1), com arquivos como `dist/videos/videos-upload.controller.js` que não têm nenhuma correspondência no `src/` atual (estrutura antiga, ex. `src/modules/channels/...`, diferente da atual `src/channels/...`). Um subagent de teste caiu nesse `dist/` obsoleto ao resolver módulos, causando um `TypeError` enganoso; `rm -rf dist/` resolveu (100% regenerável via `npm run build`).
+  - Erro de teste próprio (não de produção): meu primeiro rascunho do teste de integração criava uma `Queue` "solta" via `new Queue(name, {connection})`, sem as `defaultJobOptions` que só existem na instância registrada pelo `QueueModule` real — por isso `job.opts.attempts` vinha `0` em vez de `3`. Corrigido usando `Test.createTestingModule({imports:[QueueModule]})` + `getQueueToken()` para obter a Queue real via DI, em vez de duplicar a config manualmente no teste.
 
 ### SI-03.10 — Infra: binários FFmpeg/FFprobe na imagem do worker
 - **Status:** pending

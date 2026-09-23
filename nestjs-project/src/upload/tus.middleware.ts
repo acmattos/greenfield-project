@@ -50,6 +50,8 @@ export class TusMiddleware implements NestMiddleware {
         tusHooks.onIncomingRequest(req, res, uploadId),
       onUploadCreate: (req, res, uploadObj) =>
         tusHooks.onUploadCreate(req, res, uploadObj),
+      onUploadFinish: (req, res, uploadObj) =>
+        tusHooks.onUploadFinish(req, res, uploadObj),
     });
   }
 
