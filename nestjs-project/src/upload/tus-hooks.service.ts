@@ -10,6 +10,8 @@ import { extractAuthenticatedUserId } from './jwt-from-request.util';
 import { resolveTitle } from './resolve-title.util';
 
 const SUPPORTED_VIDEO_FORMAT = 'video/mp4';
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 @Injectable()
 export class TusHooksService {
@@ -32,6 +34,82 @@ export class TusHooksService {
     const channel = await this.resolveAuthenticatedChannel(req);
     await this.createDraftVideo(upload, channel);
     return { res };
+  }
+
+  async onIncomingRequest(
+    req: IncomingMessage,
+    _res: ServerResponse,
+    uploadId: string,
+  ): Promise<void> {
+    if (req.method === 'OPTIONS') {
+      return;
+    }
+
+    const userId = await this.authenticateOrThrow(req);
+
+    if (req.method === 'POST') {
+      // Creation request — PostHandler passes the namingFunction's
+      // freshly-generated id here, not an id of an existing upload, so
+      // there is no Video row to check ownership of yet (onUploadCreate
+      // handles the rest of the creation flow).
+      return;
+    }
+
+    await this.assertOwnership(uploadId, userId);
+  }
+
+  private async authenticateOrThrow(req: IncomingMessage): Promise<string> {
+    try {
+      return await extractAuthenticatedUserId(req, this.jwtService);
+    } catch {
+      throw {
+        status_code: 401,
+        body: JSON.stringify({
+          statusCode: 401,
+          error: 'UNAUTHENTICATED',
+          message: 'Authentication required',
+        }),
+      };
+    }
+  }
+
+  private async assertOwnership(
+    uploadId: string,
+    userId: string,
+  ): Promise<void> {
+    if (!UUID_REGEX.test(uploadId)) {
+      throw this.videoNotFoundError();
+    }
+
+    const video = await this.videoRepository.findOne({
+      where: { id: uploadId },
+      relations: ['channel'],
+    });
+    if (!video) {
+      throw this.videoNotFoundError();
+    }
+
+    if (video.channel.user_id !== userId) {
+      throw {
+        status_code: 403,
+        body: JSON.stringify({
+          statusCode: 403,
+          error: 'FORBIDDEN',
+          message: 'Not the owner of this upload',
+        }),
+      };
+    }
+  }
+
+  private videoNotFoundError(): { status_code: number; body: string } {
+    return {
+      status_code: 404,
+      body: JSON.stringify({
+        statusCode: 404,
+        error: 'VIDEO_NOT_FOUND',
+        message: 'Video not found',
+      }),
+    };
   }
 
   private assertSupportedFormat(

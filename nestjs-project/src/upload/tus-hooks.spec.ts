@@ -6,8 +6,12 @@ import { Channel } from '../channels/entities/channel.entity';
 import { Video } from '../videos/entities/video.entity';
 import { TusHooksService } from './tus-hooks.service';
 
-function fakeRequest(authHeader?: string): IncomingMessage {
+function fakeRequest(
+  authHeader?: string,
+  method: string = 'PATCH',
+): IncomingMessage {
   return {
+    method,
     headers: authHeader ? { authorization: authHeader } : {},
   } as IncomingMessage;
 }
@@ -26,7 +30,7 @@ function fakeUpload(overrides: {
 
 describe('TusHooksService', () => {
   let jwtService: { verifyAsync: jest.Mock };
-  let videoRepository: { create: jest.Mock; save: jest.Mock };
+  let videoRepository: { create: jest.Mock; save: jest.Mock; findOne: jest.Mock };
   let channelRepository: { findOneBy: jest.Mock };
   let service: TusHooksService;
   const res = {} as ServerResponse;
@@ -37,6 +41,7 @@ describe('TusHooksService', () => {
     videoRepository = {
       create: jest.fn((x) => x),
       save: jest.fn((x) => Promise.resolve(x)),
+      findOne: jest.fn(),
     };
     channelRepository = { findOneBy: jest.fn() };
 
@@ -159,6 +164,114 @@ describe('TusHooksService', () => {
           channelId: 'channel-1',
         }),
       );
+    });
+  });
+
+  describe('onIncomingRequest', () => {
+    const VALID_UUID = '11111111-2222-4333-8444-555555555555';
+
+    it('passes an OPTIONS request through without checking auth', async () => {
+      await expect(
+        service.onIncomingRequest(fakeRequest(undefined, 'OPTIONS'), res, ''),
+      ).resolves.toBeUndefined();
+      expect(jwtService.verifyAsync).not.toHaveBeenCalled();
+    });
+
+    it('passes an authenticated POST (creation) without checking ownership — PostHandler passes the freshly-generated id, not an existing upload id', async () => {
+      jwtService.verifyAsync.mockResolvedValue({
+        sub: 'user-1',
+        email: 'u@example.com',
+      });
+
+      await expect(
+        service.onIncomingRequest(
+          fakeRequest(AUTH_HEADER, 'POST'),
+          res,
+          VALID_UUID,
+        ),
+      ).resolves.toBeUndefined();
+      expect(videoRepository.findOne).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-OPTIONS request without a token with 401 UNAUTHENTICATED', async () => {
+      await expect(
+        service.onIncomingRequest(fakeRequest(undefined, 'PATCH'), res, VALID_UUID),
+      ).rejects.toMatchObject({
+        status_code: 401,
+        body: JSON.stringify({
+          statusCode: 401,
+          error: 'UNAUTHENTICATED',
+          message: 'Authentication required',
+        }),
+      });
+    });
+
+    it('treats a syntactically malformed uploadId as 404, without querying the database', async () => {
+      jwtService.verifyAsync.mockResolvedValue({
+        sub: 'user-1',
+        email: 'u@example.com',
+      });
+
+      await expect(
+        service.onIncomingRequest(
+          fakeRequest(AUTH_HEADER, 'PATCH'),
+          res,
+          'not-a-uuid',
+        ),
+      ).rejects.toMatchObject({
+        status_code: 404,
+        body: JSON.stringify({
+          statusCode: 404,
+          error: 'VIDEO_NOT_FOUND',
+          message: 'Video not found',
+        }),
+      });
+      expect(videoRepository.findOne).not.toHaveBeenCalled();
+    });
+
+    it('rejects with 403 FORBIDDEN when the authenticated user does not own the upload', async () => {
+      jwtService.verifyAsync.mockResolvedValue({
+        sub: 'user-1',
+        email: 'u@example.com',
+      });
+      videoRepository.findOne.mockResolvedValue({
+        id: VALID_UUID,
+        channel: { user_id: 'someone-else' },
+      });
+
+      await expect(
+        service.onIncomingRequest(
+          fakeRequest(AUTH_HEADER, 'PATCH'),
+          res,
+          VALID_UUID,
+        ),
+      ).rejects.toMatchObject({
+        status_code: 403,
+        body: JSON.stringify({
+          statusCode: 403,
+          error: 'FORBIDDEN',
+          message: 'Not the owner of this upload',
+        }),
+      });
+    });
+
+    it('passes when the authenticated user owns the upload', async () => {
+      jwtService.verifyAsync.mockResolvedValue({
+        sub: 'user-1',
+        email: 'u@example.com',
+      });
+      videoRepository.findOne.mockResolvedValue({
+        id: VALID_UUID,
+        channel: { user_id: 'user-1' },
+      });
+
+      await expect(
+        service.onIncomingRequest(
+          fakeRequest(AUTH_HEADER, 'PATCH'),
+          res,
+          VALID_UUID,
+        ),
+      ).resolves.toBeUndefined();
     });
   });
 });

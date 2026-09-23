@@ -46,6 +46,8 @@ export class TusMiddleware implements NestMiddleware {
       namingFunction: () => randomUUID(),
       maxSize: upload.maxUploadBytes,
       disableTerminationForFinishedUploads: true,
+      onIncomingRequest: (req, res, uploadId) =>
+        tusHooks.onIncomingRequest(req, res, uploadId),
       onUploadCreate: (req, res, uploadObj) =>
         tusHooks.onUploadCreate(req, res, uploadObj),
     });

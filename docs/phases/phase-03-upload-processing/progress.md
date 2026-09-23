@@ -1,7 +1,7 @@
 # phase-03-upload-processing — Progress
 
 **Status:** in_progress
-**SIs:** 7/19 completed
+**SIs:** 8/19 completed
 
 ### SI-03.1 — Infra: object storage (MinIO) + cliente S3
 - **Status:** completed
@@ -64,9 +64,12 @@
   - `Upload-Metadata` decodificado usa `Buffer.from(...).toString('base64')` por par chave/valor nos testes — formato confirmado do protocolo tus.
 
 ### SI-03.8 — Auth boundary em todos os requests tus
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 23 passing (15 unit + 8 integração) + 7 de regressão (SI-03.7) confirmados sem quebra
+- **Observations:**
+  - Bug real encontrado e corrigido durante esta SI: `onIncomingRequest(req, res, uploadId)` — para uma requisição `POST` de criação, o `PostHandler` do `@tus/server` passa como `uploadId` o UUID **recém-gerado** pelo `namingFunction` (não uma string vazia, como eu havia presumido ao ler só o `.d.ts`). Minha checagem original `if (!uploadId) return` nunca detectava o caso de criação corretamente, e caía na checagem de ownership contra um `Video` que ainda não existe → 404 espúrio em todo `POST` autenticado. Corrigido para checar `req.method === 'POST'` explicitamente. Diagnosticado lendo o código-fonte real instalado (`node_modules/@tus/server/dist/handlers/PostHandler.js`), não a documentação — a chamada `onIncomingRequest(req, res, id)` acontece **depois** de `id = await namingFunction(...)` no código real.
+  - Um subagent despachado para rodar os testes tentou "consertar" o bug por conta própria (mudou `upload.module.ts` para uma sintaxe de rota alternativa, sem resolver a causa real) — revertido; a correção real foi feita por mim após diagnosticar com um script ad-hoc (`ts-node` + `fetch` direto contra a app de teste) que expôs o body/status HTTP reais.
+  - `Server.handle(req,res)` real (código-fonte lido) não implementa `onIncomingRequest` no nível do `Server` — cada `Handler` (Post/Patch/Head/Delete/Get) o invoca individualmente, cada um resolvendo `id` à sua própria maneira; confirmado empiricamente, não presumido a partir do `.d.ts`.
 
 ### SI-03.9 — Enfileiramento do job ao concluir upload
 - **Status:** pending
