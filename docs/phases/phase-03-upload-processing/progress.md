@@ -1,7 +1,7 @@
 # phase-03-upload-processing — Progress
 
 **Status:** in_progress
-**SIs:** 10/19 completed
+**SIs:** 11/19 completed
 
 ### SI-03.1 — Infra: object storage (MinIO) + cliente S3
 - **Status:** completed
@@ -87,9 +87,15 @@
   - Confirmado ativamente (não só por construção) que a imagem da API não tem os binários: `docker compose exec nestjs-api which ffmpeg` retorna exit 1.
 
 ### SI-03.11 — Bootstrap do worker: entrypoint, processor, PROCESSING/no-op
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 8 passing
+- **Observations:**
+  - `nest build` compila TODO o `src/` (não é baseado em um único entry point tipo Webpack), então `dist/worker/main.js` foi gerado automaticamente ao lado de `dist/main.js` sem precisar editar `nest-cli.json` — confirmado empiricamente após `npm run build`.
+  - Erro real encontrado ao subir o worker pela primeira vez: `TypeORMError: Entity metadata for Video#channel was not found`. `autoLoadEntities: true` só resolve metadados de uma entidade se ALGUM módulo a registra via `TypeOrmModule.forFeature([...])` — o `WorkerModule` registrava só `Video`, mas a relação `@ManyToOne(() => Channel)` exige que `Channel` (e, por cascata, `User`, via `Channel`'s `@OneToOne`) também estejam registradas, mesmo sem uso direto de `Repository<Channel>`/`Repository<User>` no worker. Corrigido: `TypeOrmModule.forFeature([Video, Channel, User])`.
+  - `WorkerModule` é standalone (bootstrap próprio via `NestFactory.createApplicationContext`, não reusa `AppModule`) — tem seu próprio `ConfigModule.forRoot` (mesmo `envValidationSchema` compartilhado) e `BullModule.forRootAsync` com a conexão **consumer** (`maxRetriesPerRequest: null`), nunca a conexão producer fail-fast da API.
+  - `@Processor(name, {concurrency})`'s `workerOptions` é resolvido em tempo de decoração de classe (import do módulo), antes do container de DI existir — `WORKER_CONCURRENCY` é lido diretamente de `process.env` no nível do módulo, não via `ConfigService` injetado.
+  - Capacity check confirmada rodando de verdade no container: log real "Worker temp volume capacity check passed: 608319909888 bytes available (>= 11274289152 required)" — valor bate com `1 × 10737418240 (MAX_UPLOAD_BYTES) + 536870912 (WORKER_TEMP_MARGIN_BYTES)`.
+  - Serviço `worker` adicionado ao `compose.yaml` com `command: node dist/worker/main.js` (diferente do padrão `tail -f /dev/null` da API — o worker roda o processo real, não fica ocioso para exec manual), volume dedicado `worker-temp:/tmp/videos`, healthcheck de processo (`pgrep`), `depends_on` com `service_healthy` em db/minio/redis.
 
 ### SI-03.12 — Worker: download para temp dir com preflight e limpeza
 - **Status:** pending

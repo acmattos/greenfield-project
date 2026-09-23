@@ -34,4 +34,6 @@ export const envValidationSchema = Joi.object({
   REDIS_HOST: Joi.string().default('redis'),
   REDIS_PORT: Joi.number().default(6379),
   MAX_UPLOAD_BYTES: Joi.number().integer().positive().default(10737418240),
+  WORKER_CONCURRENCY: Joi.number().integer().min(1).default(1),
+  WORKER_TEMP_MARGIN_BYTES: Joi.number().integer().min(0).default(536870912),
 });

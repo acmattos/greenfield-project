@@ -63,8 +63,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
+    command: node dist/worker/main.js
     volumes:
       - .:/home/node/app
+      - worker-temp:/tmp/videos
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'dist/worker/main.js' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     depends_on:
       db:
         condition: service_healthy
@@ -75,4 +82,5 @@ services:
 
 volumes:
   minio-data:
+  worker-temp:
 
