@@ -57,16 +57,14 @@ describe('tus upload — auth boundary on every request (integration)', () => {
     return jwtService.signAsync({ sub: user.id, email: user.email });
   }
 
-  async function createExistingUpload(
-    ownerToken: string,
-  ): Promise<string> {
+  async function createExistingUpload(ownerToken: string): Promise<string> {
     const res = await request(app.getHttpServer())
       .post('/videos/upload')
       .set('Authorization', `Bearer ${ownerToken}`)
       .set('Tus-Resumable', '1.0.0')
       .set('Upload-Length', '1000')
       .expect(201);
-    const location = res.headers.location as string;
+    const location = res.headers.location;
     return `/videos/upload/${location.split('/').pop()}`;
   }
 
@@ -77,7 +75,7 @@ describe('tus upload — auth boundary on every request (integration)', () => {
       .set('Upload-Length', '1000')
       .expect(401);
 
-    const body = JSON.parse(res.text);
+    const body = JSON.parse(res.text) as Record<string, unknown>;
     expect(body).toMatchObject({
       statusCode: 401,
       error: 'UNAUTHENTICATED',
@@ -105,7 +103,7 @@ describe('tus upload — auth boundary on every request (integration)', () => {
         .set('Content-Type', 'application/offset+octet-stream')
         .expect(401);
 
-      const body = JSON.parse(res.text);
+      const body = JSON.parse(res.text) as Record<string, unknown>;
       expect(body).toMatchObject({ statusCode: 401, error: 'UNAUTHENTICATED' });
     });
 
@@ -122,7 +120,7 @@ describe('tus upload — auth boundary on every request (integration)', () => {
         .set('Content-Type', 'application/offset+octet-stream')
         .expect(403);
 
-      const body = JSON.parse(res.text);
+      const body = JSON.parse(res.text) as Record<string, unknown>;
       expect(body).toMatchObject({ statusCode: 403, error: 'FORBIDDEN' });
     });
 

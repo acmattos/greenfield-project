@@ -1,6 +1,8 @@
 export interface FfprobeStream {
   codec_name?: string;
-  codec_type: 'video' | 'audio' | string;
+  // ffprobe emits other values too (e.g. 'subtitle', 'data') — only
+  // 'video'/'audio' are meaningful to this worker's own logic.
+  codec_type: string;
   width?: number;
   height?: number;
 }

@@ -1,7 +1,7 @@
 import type { Job } from 'bullmq';
 import { UnrecoverableError } from 'bullmq';
 import { Repository } from 'typeorm';
-import type { S3Client } from '@aws-sdk/client-s3';
+import type { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { Video, VideoProcessingStatus } from '../videos/entities/video.entity';
 import type { FfmpegVideoProcessorAdapter } from './ffmpeg-video-processor.adapter';
 import { VideoProcessingProcessor } from './video-processing.processor';
@@ -29,7 +29,10 @@ function fakeFailedJob(
 
 const VALID_MP4_PROBE = {
   streams: [{ codec_type: 'video', codec_name: 'h264' }],
-  format: { format_name: 'mov,mp4,m4a,3gp,3g2,mj2', tags: { major_brand: 'isom' } },
+  format: {
+    format_name: 'mov,mp4,m4a,3gp,3g2,mj2',
+    tags: { major_brand: 'isom' },
+  },
 };
 
 describe('VideoProcessingProcessor', () => {
@@ -45,7 +48,9 @@ describe('VideoProcessingProcessor', () => {
       update: jest.fn().mockResolvedValue({ affected: 1 }),
     };
     tempStorage = {
-      downloadToTempDir: jest.fn().mockResolvedValue('/tmp/videos/job-1/source'),
+      downloadToTempDir: jest
+        .fn()
+        .mockResolvedValue('/tmp/videos/job-1/source'),
       cleanup: jest.fn().mockResolvedValue(undefined),
     };
     videoProcessor = {
@@ -227,7 +232,12 @@ describe('VideoProcessingProcessor', () => {
     it('persists extracted metadata and thumbnailStorageKey, and sets READY', async () => {
       videoProcessor.probe.mockResolvedValue({
         streams: [
-          { codec_type: 'video', codec_name: 'h264', width: 1920, height: 1080 },
+          {
+            codec_type: 'video',
+            codec_name: 'h264',
+            width: 1920,
+            height: 1080,
+          },
           { codec_type: 'audio', codec_name: 'aac' },
         ],
         format: {
@@ -321,7 +331,8 @@ describe('VideoProcessingProcessor', () => {
       await processor.process(fakeJob('video-1'));
 
       expect(s3Client.send).toHaveBeenCalledTimes(1);
-      const putCommand = s3Client.send.mock.calls[0][0];
+      const calls = s3Client.send.mock.calls as PutObjectCommand[][];
+      const putCommand = calls[0][0];
       expect(putCommand.input).toMatchObject({
         Bucket: 'videos',
         Key: 'videos/video-1/thumbnail',

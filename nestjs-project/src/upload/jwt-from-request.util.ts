@@ -12,10 +12,7 @@ export async function extractAuthenticatedUserId(
   jwtService: JwtService,
 ): Promise<string> {
   const authHeader = req.headers['authorization'];
-  if (
-    typeof authHeader !== 'string' ||
-    !authHeader.startsWith(BEARER_PREFIX)
-  ) {
+  if (typeof authHeader !== 'string' || !authHeader.startsWith(BEARER_PREFIX)) {
     throw new Error('Missing or malformed Authorization header');
   }
   const token = authHeader.slice(BEARER_PREFIX.length);

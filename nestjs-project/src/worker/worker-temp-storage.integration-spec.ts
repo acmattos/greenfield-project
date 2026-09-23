@@ -5,9 +5,13 @@ import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import storageConfig from '../config/storage.config';
 import { WorkerTempStorageService } from './worker-temp-storage.service';
 
+function actualFsPromises(): typeof import('fs/promises') {
+  return jest.requireActual('fs/promises');
+}
+
 jest.mock('fs/promises', () => ({
-  ...jest.requireActual('fs/promises'),
-  statfs: jest.fn(jest.requireActual('fs/promises').statfs),
+  ...actualFsPromises(),
+  statfs: jest.fn(actualFsPromises().statfs),
 }));
 
 const mockStatfs = statfs as jest.MockedFunction<typeof statfs>;
@@ -35,9 +39,7 @@ describe('WorkerTempStorageService (integration)', () => {
   });
 
   afterEach(() => {
-    mockStatfs.mockImplementation(
-      jest.requireActual('fs/promises').statfs,
-    );
+    mockStatfs.mockImplementation(actualFsPromises().statfs);
   });
 
   it('downloads a real object to the job temp dir, then removes it on cleanup', async () => {

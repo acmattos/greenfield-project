@@ -11,6 +11,7 @@ import { VIDEO_PROCESSING_QUEUE } from '../queue/queue.constants';
 import { Video } from '../videos/entities/video.entity';
 import { extractAuthenticatedUserId } from './jwt-from-request.util';
 import { resolveTitle } from './resolve-title.util';
+import { TusProtocolError } from './tus-protocol.error';
 
 const SUPPORTED_VIDEO_FORMAT = 'video/mp4';
 const UUID_REGEX =
@@ -98,14 +99,14 @@ export class TusHooksService {
     try {
       return await extractAuthenticatedUserId(req, this.jwtService);
     } catch {
-      throw {
-        status_code: 401,
-        body: JSON.stringify({
+      throw new TusProtocolError(
+        401,
+        JSON.stringify({
           statusCode: 401,
           error: 'UNAUTHENTICATED',
           message: 'Authentication required',
         }),
-      };
+      );
     }
   }
 
@@ -126,26 +127,26 @@ export class TusHooksService {
     }
 
     if (video.channel.user_id !== userId) {
-      throw {
-        status_code: 403,
-        body: JSON.stringify({
+      throw new TusProtocolError(
+        403,
+        JSON.stringify({
           statusCode: 403,
           error: 'FORBIDDEN',
           message: 'Not the owner of this upload',
         }),
-      };
+      );
     }
   }
 
-  private videoNotFoundError(): { status_code: number; body: string } {
-    return {
-      status_code: 404,
-      body: JSON.stringify({
+  private videoNotFoundError(): TusProtocolError {
+    return new TusProtocolError(
+      404,
+      JSON.stringify({
         statusCode: 404,
         error: 'VIDEO_NOT_FOUND',
         message: 'Video not found',
       }),
-    };
+    );
   }
 
   private assertSupportedFormat(
@@ -153,14 +154,14 @@ export class TusHooksService {
   ): void {
     const filetype = metadata?.filetype;
     if (filetype && filetype !== SUPPORTED_VIDEO_FORMAT) {
-      throw {
-        status_code: 415,
-        body: JSON.stringify({
+      throw new TusProtocolError(
+        415,
+        JSON.stringify({
           statusCode: 415,
           error: 'UNSUPPORTED_VIDEO_FORMAT',
           message: 'Unsupported video format',
         }),
-      };
+      );
     }
   }
 
@@ -175,14 +176,14 @@ export class TusHooksService {
       this.logger.error(
         `Authenticated user ${userId} has no associated Channel — account-integrity invariant violated`,
       );
-      throw {
-        status_code: 500,
-        body: JSON.stringify({
+      throw new TusProtocolError(
+        500,
+        JSON.stringify({
           statusCode: 500,
           error: 'ACCOUNT_INCOMPLETE',
           message: 'Something went wrong',
         }),
-      };
+      );
     }
     return channel;
   }

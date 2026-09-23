@@ -14,6 +14,10 @@ import { ValidationExceptionFilter } from '../src/common/filters/validation-exce
 import { cleanAllTables } from '../src/test/create-test-data-source';
 
 describe('Auth (e2e)', () => {
+  // Default 5000ms hook timeout is too tight for a full AppModule compile
+  // (now includes upload/storage/queue module graphs) under load.
+  jest.setTimeout(30000);
+
   let app: INestApplication<App>;
   let dataSource: DataSource;
   let verificationTokenRepository: Repository<VerificationToken>;

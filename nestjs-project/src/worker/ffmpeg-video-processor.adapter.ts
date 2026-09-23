@@ -39,7 +39,7 @@ export class FfmpegVideoProcessorAdapter implements VideoProcessorPort {
         try {
           resolve(JSON.parse(stdout) as FfprobeOutput);
         } catch (err) {
-          reject(err);
+          reject(err instanceof Error ? err : new Error(String(err)));
         }
       });
     });

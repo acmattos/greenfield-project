@@ -5,7 +5,11 @@ import { pipeline } from 'stream/promises';
 import type { Readable } from 'stream';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
-import { GetObjectCommand, HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  GetObjectCommand,
+  HeadObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import storageConfig from '../config/storage.config';
 import { INTERNAL_S3_CLIENT } from '../storage/storage.constants';
 import { WORKER_TEMP_DIR } from './worker.constants';

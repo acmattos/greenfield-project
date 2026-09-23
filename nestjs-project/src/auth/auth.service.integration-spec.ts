@@ -25,6 +25,7 @@ import {
   createTestDataSource,
 } from '../test/create-test-data-source';
 import { clearMailpitMessages } from '../test/mailpit';
+import { Video } from '../videos/entities/video.entity';
 import { AuthService } from './auth.service';
 import { RefreshToken } from './entities/refresh-token.entity';
 import {
@@ -32,7 +33,14 @@ import {
   VerificationTokenType,
 } from './entities/verification-token.entity';
 
-const ALL_ENTITIES = [User, Channel, RefreshToken, VerificationToken];
+const ALL_ENTITIES = [User, Channel, RefreshToken, VerificationToken, Video];
+
+// Default 5000ms hook timeout is too tight for this file's first
+// beforeAll — real Postgres DataSource + mail config module compilation
+// on a cold connection pool can exceed it under load, while later
+// describe blocks in the same file reuse warm connections and finish
+// well within it.
+jest.setTimeout(30000);
 
 async function createAuthTestModule(): Promise<TestingModule> {
   const ds = createTestDataSource(ALL_ENTITIES);

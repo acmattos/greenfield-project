@@ -21,8 +21,6 @@ export class UploadModule implements NestModule {
     // Two entries: the bare path covers POST (creation); the wildcard covers
     // subsequent PATCH/HEAD/DELETE against /videos/upload/{id}.
     const basePath = TUS_UPLOAD_PATH.slice(1);
-    consumer
-      .apply(TusMiddleware)
-      .forRoutes(basePath, `${basePath}/{*splat}`);
+    consumer.apply(TusMiddleware).forRoutes(basePath, `${basePath}/{*splat}`);
   }
 }

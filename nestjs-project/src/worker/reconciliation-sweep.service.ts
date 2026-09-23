@@ -94,7 +94,9 @@ export class ReconciliationSweepService
   // object may already be durably complete in storage — proven only by a
   // successful HeadObjectCommand against the deterministic key (video.id).
   private async recoverStorageAnchoredUploads(): Promise<void> {
-    const cutoff = new Date(Date.now() - this.worker.reconciliationGracePeriodMs);
+    const cutoff = new Date(
+      Date.now() - this.worker.reconciliationGracePeriodMs,
+    );
     const videos = await this.videoRepository.find({
       where: {
         processingStatus: VideoProcessingStatus.UPLOADING,

@@ -6,7 +6,11 @@ interface TestDataSourceOptions {
 }
 
 export function createTestDataSource(
-  entities: (Function | string | EntitySchema<any>)[],
+  entities: (
+    | (new (...args: unknown[]) => unknown)
+    | string
+    | EntitySchema<unknown>
+  )[],
   options: TestDataSourceOptions = {},
 ): DataSource {
   const { synchronize = true, migrations } = options;

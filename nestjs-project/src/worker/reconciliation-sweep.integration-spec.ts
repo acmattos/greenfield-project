@@ -147,7 +147,11 @@ describe('ReconciliationSweepService — worker integration', () => {
     ]);
     const fileBuffer = await readFile(localPath);
     await s3Client.send(
-      new PutObjectCommand({ Bucket: config.bucket, Key: key, Body: fileBuffer }),
+      new PutObjectCommand({
+        Bucket: config.bucket,
+        Key: key,
+        Body: fileBuffer,
+      }),
     );
   }
 
@@ -180,12 +184,16 @@ describe('ReconciliationSweepService — worker integration', () => {
     const job = await queue.getJob(`process-video-${completed.id}`);
     expect(job).toBeDefined();
 
-    const untouchedJob = await queue.getJob(`process-video-${stillUploading.id}`);
+    const untouchedJob = await queue.getJob(
+      `process-video-${stillUploading.id}`,
+    );
     expect(untouchedJob).toBeUndefined();
     const untouchedRow = await videoRepository.findOneBy({
       id: stillUploading.id,
     });
-    expect(untouchedRow!.processingStatus).toBe(VideoProcessingStatus.UPLOADING);
+    expect(untouchedRow!.processingStatus).toBe(
+      VideoProcessingStatus.UPLOADING,
+    );
     expect(untouchedRow!.uploadCompletedAt).toBeNull();
 
     // Second sweep: BullMQ's own jobId uniqueness silently no-ops the
@@ -233,7 +241,9 @@ describe('ReconciliationSweepService — worker integration', () => {
 
     await sweepService.sweep();
 
-    const recoveredRow = await videoRepository.findOneBy({ id: recoverable.id });
+    const recoveredRow = await videoRepository.findOneBy({
+      id: recoverable.id,
+    });
     expect(recoveredRow!.uploadCompletedAt).not.toBeNull();
     const job = await queue.getJob(`process-video-${recoverable.id}`);
     expect(job).toBeDefined();

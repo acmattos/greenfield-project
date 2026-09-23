@@ -72,7 +72,9 @@ describe('tus upload — real resumability after connection failure (integration
     await app.init();
     await app.listen(0);
 
-    const address = (app.getHttpServer() as http.Server).address() as AddressInfo;
+    const address = (
+      app.getHttpServer() as http.Server
+    ).address() as AddressInfo;
     baseUrl = `http://127.0.0.1:${address.port}`;
 
     dataSource = moduleFixture.get(DataSource);
@@ -131,7 +133,7 @@ describe('tus upload — real resumability after connection failure (integration
       )
       .expect(201);
 
-    const location = createRes.headers.location as string;
+    const location = createRes.headers.location;
     const uploadPath = new URL(location, baseUrl).pathname;
     const uploadId = uploadPath.split('/').pop() as string;
 
@@ -148,10 +150,7 @@ describe('tus upload — real resumability after connection failure (integration
       .set('Authorization', `Bearer ${token}`)
       .set('Tus-Resumable', '1.0.0')
       .expect(200);
-    const confirmedOffset = parseInt(
-      headRes.headers['upload-offset'] as string,
-      10,
-    );
+    const confirmedOffset = parseInt(headRes.headers['upload-offset'], 10);
     expect(confirmedOffset).toBeGreaterThan(0);
     expect(confirmedOffset).toBeLessThanOrEqual(halfway);
 

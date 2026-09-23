@@ -150,11 +150,10 @@ export class VideoProcessingProcessor extends WorkerHost {
   // The single writer of processingStatus = 'FAILED' in the whole worker —
   // invoked both by this live 'failed' event and (per TD-10's revision) by
   // the reconciliation sweep (SI-03.16), never two independent writers.
-  async persistTerminalFailure(
-    videoId: string,
-    reason: string,
-  ): Promise<void> {
-    this.logger.warn(`Video ${videoId} processing failed terminally: ${reason}`);
+  async persistTerminalFailure(videoId: string, reason: string): Promise<void> {
+    this.logger.warn(
+      `Video ${videoId} processing failed terminally: ${reason}`,
+    );
     // Tolerant of 0 affected rows (per upload-processing/TD-10) — a
     // videoId that no longer exists is not an error at this layer.
     await this.videoRepository.update(

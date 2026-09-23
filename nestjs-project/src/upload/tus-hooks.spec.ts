@@ -46,7 +46,7 @@ describe('TusHooksService', () => {
   beforeEach(() => {
     jwtService = { verifyAsync: jest.fn() };
     videoRepository = {
-      create: jest.fn((x) => x),
+      create: jest.fn((x: Partial<Video>) => x),
       save: jest.fn((x) => Promise.resolve(x)),
       findOne: jest.fn(),
       update: jest.fn().mockResolvedValue({ affected: 1 }),
@@ -157,7 +157,8 @@ describe('TusHooksService', () => {
       const longTitle = 'a'.repeat(300);
       const upload = fakeUpload({ metadata: { title: longTitle } });
       await service.onUploadCreate(fakeRequest(AUTH_HEADER), res, upload);
-      const savedArg = videoRepository.create.mock.calls[0][0];
+      const calls = videoRepository.create.mock.calls as Partial<Video>[][];
+      const savedArg = calls[0][0];
       expect(savedArg.title).toHaveLength(255);
     });
   });
@@ -180,13 +181,13 @@ describe('TusHooksService', () => {
   describe('onUploadFinish', () => {
     it('persists uploadCompletedAt before enqueueing the job', async () => {
       const callOrder: string[] = [];
-      videoRepository.update.mockImplementation(async () => {
+      videoRepository.update.mockImplementation(() => {
         callOrder.push('update');
-        return { affected: 1 };
+        return Promise.resolve({ affected: 1 });
       });
-      videoProcessingQueue.add.mockImplementation(async () => {
+      videoProcessingQueue.add.mockImplementation(() => {
         callOrder.push('enqueue');
-        return {};
+        return Promise.resolve({});
       });
 
       const upload = fakeUpload({ id: 'video-1' });
@@ -195,7 +196,7 @@ describe('TusHooksService', () => {
       expect(callOrder).toEqual(['update', 'enqueue']);
       expect(videoRepository.update).toHaveBeenCalledWith(
         { id: 'video-1' },
-        { uploadCompletedAt: expect.any(Date) },
+        { uploadCompletedAt: expect.any(Date) as Date },
       );
     });
 
@@ -240,7 +241,11 @@ describe('TusHooksService', () => {
 
     it('rejects a non-OPTIONS request without a token with 401 UNAUTHENTICATED', async () => {
       await expect(
-        service.onIncomingRequest(fakeRequest(undefined, 'PATCH'), res, VALID_UUID),
+        service.onIncomingRequest(
+          fakeRequest(undefined, 'PATCH'),
+          res,
+          VALID_UUID,
+        ),
       ).rejects.toMatchObject({
         status_code: 401,
         body: JSON.stringify({

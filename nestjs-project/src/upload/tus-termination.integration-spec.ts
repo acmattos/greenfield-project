@@ -98,7 +98,7 @@ describe('tus upload — termination (DELETE) scoped to in-progress uploads (int
       .set('Tus-Resumable', '1.0.0')
       .set('Upload-Length', '1000')
       .expect(201);
-    const location = res.headers.location as string;
+    const location = res.headers.location;
     const uploadId = location.split('/').pop() as string;
     return { uploadPath: `/videos/upload/${uploadId}`, uploadId };
   }
@@ -152,7 +152,7 @@ describe('tus upload — termination (DELETE) scoped to in-progress uploads (int
         `filetype ${Buffer.from('video/mp4').toString('base64')}`,
       )
       .expect(201);
-    const location = createRes.headers.location as string;
+    const location = createRes.headers.location;
     const uploadId = location.split('/').pop() as string;
     const uploadPath = `/videos/upload/${uploadId}`;
 

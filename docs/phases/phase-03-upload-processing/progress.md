@@ -1,6 +1,6 @@
 # phase-03-upload-processing — Progress
 
-**Status:** in_progress
+**Status:** completed
 **SIs:** 19/19 completed
 
 ### SI-03.1 — Infra: object storage (MinIO) + cliente S3
@@ -170,3 +170,23 @@
   - `EVENTS.POST_TERMINATE` fires **depois** do response 204 já ter sido escrito (confirmado lendo `node_modules/@tus/server/dist/handlers/DeleteHandler.js`: `this.write(res, 204, {})` roda antes de `this.emit(EVENTS.POST_TERMINATE, ...)`), e o EventEmitter não aguarda a Promise do listener — fire-and-forget, mesmo padrão do `@OnWorkerEvent` do BullMQ (SI-03.15). O teste de integração precisou fazer *polling* na remoção do `Video` (não pode assumir sincronicidade logo após o `.expect(204)`), mas a limpeza do **storage** É síncrona (`await this.store.remove(id)` roda antes do `write`), então essa parte pôde ser verificada imediatamente.
   - Resposta de `400 INVALID_TERMINATION` é texto puro do protocolo tus nativo (`'Cannot terminate an already completed upload'`, confirmado em `node_modules/@tus/utils/dist/constants.js`), fora do envelope JSON customizado do projeto — comportamento esperado per o texto do plano, teste assertado contra o texto exato, não um JSON parseado.
   - Nenhum bug de produção novo — implementação e testes passaram de primeira.
+
+## Verificação final de fase (após SI-03.19)
+
+Executada per o checklist de Deliverables do plano (`tsc`, lint, build, suítes completas, `docker compose up -d`). Achados e correções, todos fora do escopo estrito de uma SI individual mas necessários para o gate "suíte completa passa":
+
+- **Lint:** corrigidos todos os erros presentes em arquivos tocados por esta fase (confirmado via `git diff` contra o ponto de branch — `queue`, `storage`, `test`, `upload`, `worker`, `videos`, `config`, `channels`). 189 problemas remanescentes no projeto são 100% débito pré-existente de fases anteriores (auth/mail/users/domain-exception-filter), confirmado não tocado por esta branch — fora de escopo, não corrigidos.
+- **Regressão real (produção):** `Channel.videos` (relação `@OneToMany` adicionada na SI-03.3) quebrava 11 arquivos de teste de fases anteriores (auth/users/channels/database) que construíam seu próprio `DataSource` de teste com uma lista de entidades fixa sem `Video` — TypeORM exige que toda entidade referenciada por uma relação esteja no mesmo array de entidades para resolver metadados, mesmo sem `synchronize`. Corrigido adicionando `Video` à lista de entidades desses 11 arquivos.
+- **Regressão real (teste pré-existente):** `env.validation.integration-spec.ts` (fase anterior, não tocado por upload-processing) tinha um baseline `requiredEnv` que não incluía os campos `STORAGE_*` que se tornaram `.required()` no Joi schema desde a SI-03.1 — toda chamada de validação passou a falhar. Corrigido adicionando os 4 campos STORAGE_* obrigatórios ao baseline.
+- **Regressão real (teste pré-existente):** `migrations.integration-spec.ts` derrubava e recriava `channels`/`users`/etc. sem (a) derrubar o enum type `verification_tokens_type_enum` (que `DROP TABLE ... CASCADE` não remove) e (b) limpar a tabela `videos` antes de recriar `channels` — deixando o type órfão de uma execução anterior falha (causando `type already exists` na migration seguinte) e linhas de vídeo órfãs com `channel_id` apontando para channels já recriados com UUIDs novos (causando falha de FK constraint em qualquer suíte subsequente com `synchronize: true`). Corrigido com `DROP TYPE IF EXISTS ... CASCADE` e `DELETE FROM videos` explícitos no `beforeAll`.
+- **Flakiness pré-existente (timeout):** `auth.service.integration-spec.ts`, `app.e2e-spec.ts`, `swagger.e2e-spec.ts`, `videos.e2e-spec.ts` usavam o timeout default do Jest (5000ms) para hooks que compilam um `AppModule`/`TestingModule` completo com DB real — insuficiente sob carga, especialmente porque o grafo de módulos do `AppModule` cresceu com os módulos desta fase (upload/storage/queue). Corrigido com `jest.setTimeout(30000)` nesses 4 arquivos.
+- **Gap pré-existente no script (`package.json`):** `test:e2e` não tinha `--runInBand`, diferente de `test:integration` — como todas as suítes e2e compartilham o mesmo banco de teste real (mesma regra já documentada em `nestjs-project/CLAUDE.md`), rodá-las em paralelo causava falhas não-determinísticas (times diferentes falhando a cada execução). Corrigido adicionando `--runInBand` ao script.
+- **Processos órfãos:** múltiplas execuções de teste anteriores nesta sessão (via subagents) deixaram processos `jest`/`npm test` zumbis rodando dentro do container `nestjs-api`, competindo pelo mesmo banco de teste e causando aparência de travamento em execuções posteriores. Identificados via `ps aux` + `pg_stat_activity` e encerrados manualmente; `--forceExit` passou a ser usado nas execuções finais para evitar recorrência.
+
+**Resultado final:**
+- `tsc --noEmit`: limpo.
+- Build: `dist/main.js` + `dist/worker/main.js` gerados.
+- Suíte unit+integration (`nestjs-api`, `--runInBand --forceExit`): 44/48 suítes, 231/242 testes — as 4 suítes/11 testes restantes são os que exigem FFmpeg real (por design, TD-04, só existe na imagem do worker).
+- Suíte de integração com FFmpeg real (`worker`): 4/4 suítes, 14/14 testes.
+- E2E (`nestjs-api`, `--runInBand --forceExit`): 4/4 suítes, 62/62 testes.
+- `docker compose up -d`: todos os 6 serviços `Up`; os 4 com healthcheck definido (`db`, `minio`, `redis`, `worker`) reportam `healthy`; `nestjs-api` não tem healthcheck configurado por design (container fica pronto para `exec`, servidor dev só sobe quando pedido explicitamente).

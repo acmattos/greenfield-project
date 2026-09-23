@@ -88,7 +88,7 @@ describe('tus upload — mount + draft creation (integration)', () => {
       )
       .expect(201);
 
-    const location = res.headers.location as string;
+    const location = res.headers.location;
     const uploadId = location.split('/').pop() as string;
 
     const video = await videoRepository.findOneBy({ id: uploadId });
@@ -109,7 +109,7 @@ describe('tus upload — mount + draft creation (integration)', () => {
       .set('Upload-Metadata', encodeUploadMetadata({ filetype: 'video/avi' }))
       .expect(415);
 
-    const body = JSON.parse(res.text);
+    const body = JSON.parse(res.text) as Record<string, unknown>;
     expect(body).toMatchObject({
       statusCode: 415,
       error: 'UNSUPPORTED_VIDEO_FORMAT',
@@ -140,7 +140,7 @@ describe('tus upload — mount + draft creation (integration)', () => {
       .set('Upload-Length', '1000')
       .expect(201);
 
-    const uploadId = (res.headers.location as string).split('/').pop();
+    const uploadId = res.headers.location.split('/').pop();
     const video = await videoRepository.findOneBy({ id: uploadId });
     expect(video!.title).toBe('Untitled video');
   });
