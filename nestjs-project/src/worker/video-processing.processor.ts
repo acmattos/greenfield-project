@@ -2,7 +2,11 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import type { ConfigType } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { Job, UnrecoverableError } from 'bullmq';
 import { Repository } from 'typeorm';
 import storageConfig from '../config/storage.config';
@@ -11,6 +15,10 @@ import { INTERNAL_S3_CLIENT } from '../storage/storage.constants';
 import { Video, VideoProcessingStatus } from '../videos/entities/video.entity';
 import { FfmpegVideoProcessorAdapter } from './ffmpeg-video-processor.adapter';
 import { isSupportedVideoFormat } from './video-format-validator';
+import {
+  extractVideoMetadata,
+  resolveThumbnailTimestampSeconds,
+} from './video-metadata-extractor';
 import { WorkerTempStorageService } from './worker-temp-storage.service';
 
 // Read directly from process.env — @Processor's worker options are resolved
@@ -82,7 +90,31 @@ export class VideoProcessingProcessor extends WorkerHost {
         );
       }
 
-      // Metadata/thumbnail extraction + READY transition: SI-03.14.
+      const metadata = extractVideoMetadata(probeOutput);
+      const thumbnailTimestamp = resolveThumbnailTimestampSeconds(probeOutput);
+      const thumbnailBuffer = await this.videoProcessor.extractThumbnail(
+        sourcePath,
+        thumbnailTimestamp,
+      );
+
+      const thumbnailStorageKey = `videos/${videoId}/thumbnail`;
+      await this.s3Client.send(
+        new PutObjectCommand({
+          Bucket: this.storage.bucket,
+          Key: thumbnailStorageKey,
+          Body: thumbnailBuffer,
+          ContentType: 'image/jpeg',
+        }),
+      );
+
+      await this.videoRepository.update(
+        { id: videoId },
+        {
+          ...metadata,
+          thumbnailStorageKey,
+          processingStatus: VideoProcessingStatus.READY,
+        },
+      );
     } finally {
       // Runs regardless of outcome — never leaves a job's temp directory
       // behind, per upload-processing/TD-07.

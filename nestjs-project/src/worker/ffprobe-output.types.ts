@@ -1,6 +1,8 @@
 export interface FfprobeStream {
   codec_name?: string;
   codec_type: 'video' | 'audio' | string;
+  width?: number;
+  height?: number;
 }
 
 export interface FfprobeFormat {

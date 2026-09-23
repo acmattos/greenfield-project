@@ -1,7 +1,7 @@
 # phase-03-upload-processing — Progress
 
 **Status:** in_progress
-**SIs:** 13/19 completed
+**SIs:** 14/19 completed
 
 ### SI-03.1 — Infra: object storage (MinIO) + cliente S3
 - **Status:** completed
@@ -117,9 +117,13 @@
   - Diagnóstico de ambos os bugs feito via scripts `ts-node` ad-hoc executados diretamente no container (mais rápido e preciso que iterar via subagents de teste).
 
 ### SI-03.14 — Worker: metadados, thumbnail e transição para READY
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 14 unit + 4 integração (2 novos desta SI + 2 de regressão confirmadas)
+- **Observations:**
+  - `extractVideoMetadata`/`resolveThumbnailTimestampSeconds` (novo `video-metadata-extractor.ts`) reutilizam o MESMO `FfprobeOutput` já obtido pela validação de formato da SI-03.13 — nenhuma segunda chamada a `ffprobe`. `durationSeconds`/`bitRate` persistidos como inteiros arredondados (`format.duration`/`format.bit_rate`, ambos strings no output do ffprobe), mas o timestamp da thumbnail usa a duração bruta (não arredondada) — evita risco de estourar o fim do vídeo em clipes muito curtos (ex.: duração real 1.0s arredondaria para 1, mas `min(2, 1.0/2) = 0.5` usa o valor exato).
+  - Geração de thumbnail via `ffmpeg -ss <ts> -i <path> -frames:v 1 -f image2pipe -vcodec mjpeg -` com output direto no stdout (sem arquivo intermediário) — comando validado empiricamente no container (bytes retornados começam com o magic number JPEG `ff d8`, confirmado também no teste de integração).
+  - Discriminador de container (SI-03.13) mantido reaproveitado sem alteração; `VideoProcessorPort`/`FfmpegVideoProcessorAdapter` ganharam só o método novo `extractThumbnail`, ambos via `spawn` array-form + `shell: false` (mesmo padrão de segurança do `probe`).
+  - Nenhum bug de produção novo encontrado nesta SI — código e testes (unit + integração) passaram de primeira depois do rebuild+restart do worker (lição da SI-03.13 aplicada preventivamente desta vez).
 
 ### SI-03.15 — Worker: handler @OnWorkerEvent('failed') → FAILED
 - **Status:** pending

@@ -189,3 +189,163 @@ describe('Video format rejection — worker integration', () => {
     await moduleRef.close();
   }, 30000);
 });
+
+describe('Video processing success — worker integration', () => {
+  let dataSource: DataSource;
+  let userRepository: Repository<User>;
+  let channelRepository: Repository<Channel>;
+  let videoRepository: Repository<Video>;
+  let s3Client: S3Client;
+  const config = storageConfig();
+
+  beforeAll(async () => {
+    dataSource = createTestDataSource(ALL_ENTITIES);
+    await dataSource.initialize();
+    userRepository = dataSource.getRepository(User);
+    channelRepository = dataSource.getRepository(Channel);
+    videoRepository = dataSource.getRepository(Video);
+
+    s3Client = new S3Client({
+      endpoint: config.endpoint,
+      forcePathStyle: true,
+      region: config.region,
+      credentials: {
+        accessKeyId: config.accessKeyId,
+        secretAccessKey: config.secretAccessKey,
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await dataSource.destroy();
+    s3Client.destroy();
+  });
+
+  beforeEach(async () => {
+    await cleanAllTables(dataSource);
+  });
+
+  async function createValidVideo(durationSeconds: number): Promise<Video> {
+    const user = await userRepository.save(
+      userRepository.create({
+        email: `ok_${randomUUID()}@example.com`,
+        password: 'hashed',
+      }),
+    );
+    const channel = await channelRepository.save(
+      channelRepository.create({
+        name: 'Chan',
+        nickname: `chan_${randomUUID().slice(0, 8)}`,
+        user_id: user.id,
+      }),
+    );
+    const sourceStorageKey = randomUUID();
+
+    const localPath = `/tmp/${sourceStorageKey}.mp4`;
+    await execFileAsync(process.env.FFMPEG_PATH || '/usr/local/bin/ffmpeg', [
+      '-f',
+      'lavfi',
+      '-i',
+      `testsrc=duration=${durationSeconds}:size=64x64:rate=10`,
+      '-f',
+      'lavfi',
+      '-i',
+      `sine=duration=${durationSeconds}`,
+      '-c:v',
+      'libx264',
+      '-c:a',
+      'aac',
+      '-movflags',
+      '+faststart',
+      '-y',
+      localPath,
+    ]);
+    const fileBuffer = await readFile(localPath);
+
+    await s3Client.send(
+      new PutObjectCommand({
+        Bucket: config.bucket,
+        Key: sourceStorageKey,
+        Body: fileBuffer,
+      }),
+    );
+
+    return videoRepository.save(
+      videoRepository.create({
+        channelId: channel.id,
+        title: 'Valid video test',
+        sourceStorageKey,
+      }),
+    );
+  }
+
+  it('a valid video ends READY with all metadata fields and thumbnailStorageKey persisted, thumbnail present in storage', async () => {
+    const video = await createValidVideo(3);
+
+    const moduleRef = await Test.createTestingModule({
+      imports: [WorkerModule],
+    }).compile();
+    const processor = moduleRef.get(VideoProcessingProcessor);
+
+    const job = {
+      id: `test-success-${randomUUID()}`,
+      data: { videoId: video.id },
+    } as never;
+    await processor.process(job);
+
+    const updated = await videoRepository.findOneBy({ id: video.id });
+    expect(updated!.processingStatus).toBe(VideoProcessingStatus.READY);
+    expect(updated!.durationSeconds).toBeGreaterThan(0);
+    expect(updated!.width).toBe(64);
+    expect(updated!.height).toBe(64);
+    expect(updated!.videoCodec).toBe('h264');
+    expect(updated!.audioCodec).toBe('aac');
+    expect(updated!.bitRate).toBeGreaterThan(0);
+    expect(updated!.thumbnailStorageKey).toBe(`videos/${video.id}/thumbnail`);
+
+    const thumbnailObject = await s3Client.send(
+      new GetObjectCommand({
+        Bucket: config.bucket,
+        Key: updated!.thumbnailStorageKey!,
+      }),
+    );
+    const thumbnailBytes = await thumbnailObject.Body!.transformToByteArray();
+    expect(thumbnailBytes.length).toBeGreaterThan(0);
+    // JPEG magic bytes (0xFF 0xD8) confirm a real image was uploaded, not
+    // an empty/garbage payload.
+    expect(Buffer.from(thumbnailBytes.slice(0, 2))).toEqual(
+      Buffer.from([0xff, 0xd8]),
+    );
+
+    await moduleRef.close();
+  }, 30000);
+
+  it('a very short (~1s) video generates a thumbnail successfully, respecting the real duration', async () => {
+    const video = await createValidVideo(1);
+
+    const moduleRef = await Test.createTestingModule({
+      imports: [WorkerModule],
+    }).compile();
+    const processor = moduleRef.get(VideoProcessingProcessor);
+
+    const job = {
+      id: `test-short-${randomUUID()}`,
+      data: { videoId: video.id },
+    } as never;
+    await processor.process(job);
+
+    const updated = await videoRepository.findOneBy({ id: video.id });
+    expect(updated!.processingStatus).toBe(VideoProcessingStatus.READY);
+
+    const thumbnailObject = await s3Client.send(
+      new GetObjectCommand({
+        Bucket: config.bucket,
+        Key: updated!.thumbnailStorageKey!,
+      }),
+    );
+    const thumbnailBytes = await thumbnailObject.Body!.transformToByteArray();
+    expect(thumbnailBytes.length).toBeGreaterThan(0);
+
+    await moduleRef.close();
+  }, 30000);
+});
