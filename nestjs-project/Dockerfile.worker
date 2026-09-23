@@ -10,6 +10,12 @@ RUN apt update && apt install -y procps curl
 COPY --from=ffmpeg /ffmpeg /usr/local/bin/ffmpeg
 COPY --from=ffmpeg /ffprobe /usr/local/bin/ffprobe
 
+# Owned by node:node so the non-root process can create per-job
+# subdirectories once the dedicated volume (worker-temp) is mounted here —
+# Docker seeds a fresh named volume from the image's own path contents
+# (including ownership) on first mount.
+RUN mkdir -p /tmp/videos && chown node:node /tmp/videos
+
 WORKDIR /home/node/app
 
 USER node

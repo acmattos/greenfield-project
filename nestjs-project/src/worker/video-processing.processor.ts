@@ -1,10 +1,16 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
+import type { ConfigType } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
+import { DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { Job, UnrecoverableError } from 'bullmq';
 import { Repository } from 'typeorm';
+import storageConfig from '../config/storage.config';
 import { VIDEO_PROCESSING_QUEUE } from '../queue/queue.constants';
+import { INTERNAL_S3_CLIENT } from '../storage/storage.constants';
 import { Video, VideoProcessingStatus } from '../videos/entities/video.entity';
+import { FfmpegVideoProcessorAdapter } from './ffmpeg-video-processor.adapter';
+import { isSupportedVideoFormat } from './video-format-validator';
 import { WorkerTempStorageService } from './worker-temp-storage.service';
 
 // Read directly from process.env — @Processor's worker options are resolved
@@ -21,6 +27,10 @@ export class VideoProcessingProcessor extends WorkerHost {
     @InjectRepository(Video)
     private readonly videoRepository: Repository<Video>,
     private readonly tempStorage: WorkerTempStorageService,
+    private readonly videoProcessor: FfmpegVideoProcessorAdapter,
+    @Inject(INTERNAL_S3_CLIENT) private readonly s3Client: S3Client,
+    @Inject(storageConfig.KEY)
+    private readonly storage: ConfigType<typeof storageConfig>,
   ) {
     super();
   }
@@ -56,14 +66,36 @@ export class VideoProcessingProcessor extends WorkerHost {
 
     const jobId = String(job.id);
     try {
-      await this.tempStorage.downloadToTempDir(jobId, video.sourceStorageKey);
+      const sourcePath = await this.tempStorage.downloadToTempDir(
+        jobId,
+        video.sourceStorageKey,
+      );
 
-      // FFprobe validation + metadata/thumbnail extraction + READY
-      // transition: SI-03.13, SI-03.14.
+      const probeOutput = await this.videoProcessor.probe(sourcePath);
+      if (!isSupportedVideoFormat(probeOutput)) {
+        // Deliberately does NOT write processingStatus here — that write is
+        // the exclusive responsibility of the @OnWorkerEvent('failed')
+        // handler (SI-03.15), per upload-processing/TD-09, TD-10.
+        await this.deleteSourceObject(video.sourceStorageKey);
+        throw new UnrecoverableError(
+          `Unsupported video format for video ${videoId}`,
+        );
+      }
+
+      // Metadata/thumbnail extraction + READY transition: SI-03.14.
     } finally {
       // Runs regardless of outcome — never leaves a job's temp directory
       // behind, per upload-processing/TD-07.
       await this.tempStorage.cleanup(jobId);
     }
+  }
+
+  private async deleteSourceObject(sourceStorageKey: string): Promise<void> {
+    await this.s3Client.send(
+      new DeleteObjectCommand({
+        Bucket: this.storage.bucket,
+        Key: sourceStorageKey,
+      }),
+    );
   }
 }

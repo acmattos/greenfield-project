@@ -13,6 +13,7 @@ import { VIDEO_PROCESSING_QUEUE } from '../queue/queue.constants';
 import { StorageModule } from '../storage/storage.module';
 import { User } from '../users/entities/user.entity';
 import { Video } from '../videos/entities/video.entity';
+import { FfmpegVideoProcessorAdapter } from './ffmpeg-video-processor.adapter';
 import { OrphanSweepService } from './orphan-sweep.service';
 import { VideoProcessingProcessor } from './video-processing.processor';
 import { WorkerCapacityCheckService } from './worker-capacity-check.service';
@@ -67,6 +68,7 @@ import { WorkerTempStorageService } from './worker-temp-storage.service';
     WorkerCapacityCheckService,
     WorkerTempStorageService,
     OrphanSweepService,
+    FfmpegVideoProcessorAdapter,
   ],
 })
 export class WorkerModule {}

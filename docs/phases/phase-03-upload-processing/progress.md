@@ -1,7 +1,7 @@
 # phase-03-upload-processing — Progress
 
 **Status:** in_progress
-**SIs:** 12/19 completed
+**SIs:** 13/19 completed
 
 ### SI-03.1 — Infra: object storage (MinIO) + cliente S3
 - **Status:** completed
@@ -107,9 +107,14 @@
   - Teste de integração da checagem de espaço insuficiente usa `HeadObjectCommand` real contra MinIO (ContentLength real) mas `statfs` mockado com baixo espaço — simular exaustão real de disco num test run não é prático.
 
 ### SI-03.13 — Worker: validação autoritativa de formato via FFprobe
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 17 unit + 4 integração (2 desta SI + 2 de regressão confirmadas)
+- **Observations:**
+  - Discriminador de container investigado empiricamente (não adivinhado): gerei MP4 e MOV reais via `ffmpeg` dentro do container worker e comparei a saída real do `ffprobe`. Confirmado: `format.format_name`/`format_long_name` são **byte-idênticos** para MP4 e MOV (mesmo demuxer `mov,mp4,m4a,3gp,3g2,mj2`) — não servem de discriminador. Único campo que diferencia é `format.tags.major_brand` ("isom" para MP4 real, "qt  " para MOV real). Como o texto do plano proíbe uma ALLOWLIST de brands MP4 (variam por encoder, ficam obsoletas), usei um DENYLIST de um único valor estável (`major_brand !== 'qt'`) — QuickTime nativo tem exatamente essa marca fixa desde a spec original, ao contrário dos brands MP4 que variam.
+  - Bug real (não de teste): container `worker` roda `node dist/worker/main.js` como processo principal (PID 1) desde a SI-03.11, e esse processo **nunca foi reiniciado** após mudanças subsequentes no código — ficou rodando uma versão desatualizada, competindo pela mesma fila Redis com os workers instanciados dentro dos testes de integração. Isso mascarou completamente a primeira rodada de testes (job "completava" usando lógica antiga). Lição: a partir de agora, sempre `npm run build` + `docker compose restart worker` após qualquer mudança em `src/worker/**` antes de rodar testes de integração que dependem da fila real.
+  - Segundo bug real: `EACCES: permission denied` ao criar subdiretórios em `/tmp/videos` — o volume Docker nomeado (`worker-temp`) foi criado como `root:root` na primeira montagem (SI-03.11), mas o processo roda como usuário `node` (não-root). Corrigido no `Dockerfile.worker` (`chown node:node /tmp/videos` antes do `USER node` — Docker propaga essa permissão ao popular um volume nomeado vazio pela primeira vez); volume recriado do zero para aplicar a correção.
+  - Teste "UnrecoverableError realmente não retry" não pode usar `jest.spyOn` numa instância de processor obtida via DI de teste, já que o worker real (PID 1) compete pela mesma fila e pode processar o job com sua própria instância — usei `job.attemptsMade` (observável via Redis, independente de qual processo pegou o job) em vez de contar chamadas de spy.
+  - Diagnóstico de ambos os bugs feito via scripts `ts-node` ad-hoc executados diretamente no container (mais rápido e preciso que iterar via subagents de teste).
 
 ### SI-03.14 — Worker: metadados, thumbnail e transição para READY
 - **Status:** pending
