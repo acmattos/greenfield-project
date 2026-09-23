@@ -7,6 +7,10 @@ import { AppModule } from './../src/app.module';
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
 
+  // Default 5000ms hook timeout is too tight for a full AppModule compile
+  // (now includes upload/storage/queue module graphs) under load.
+  jest.setTimeout(30000);
+
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],

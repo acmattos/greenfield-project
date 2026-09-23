@@ -6,6 +6,7 @@ import { VerificationToken } from '../auth/entities/verification-token.entity';
 import { CreateUsersAndChannels1775687773260 } from './migrations/1775687773260-CreateUsersAndChannels';
 import { CreateAuthTokens1777579850478 } from './migrations/1777579850478-CreateAuthTokens';
 import { createTestDataSource } from '../test/create-test-data-source';
+import { Video } from '../videos/entities/video.entity';
 
 const MANAGED_TABLES = [
   'users',
@@ -19,7 +20,7 @@ describe('Database migrations (integration)', () => {
 
   beforeAll(async () => {
     dataSource = createTestDataSource(
-      [User, Channel, RefreshToken, VerificationToken],
+      [User, Channel, RefreshToken, VerificationToken, Video],
       {
         synchronize: false,
         migrations: [
@@ -31,11 +32,30 @@ describe('Database migrations (integration)', () => {
 
     await dataSource.initialize();
 
+    // videos.channel_id FKs to channels — deleting first (while the FK
+    // still exists) avoids leaving orphaned rows once channels is
+    // dropped/recreated below. videos is not one of this suite's own
+    // managed tables (that migration is out of scope here), but a prior
+    // test file's leftover rows would otherwise break any later suite's
+    // schema sync, which re-adds this same FK.
+    await dataSource.query(`DELETE FROM "videos"`).catch(() => {
+      // Table may not exist yet on a fully fresh database — fine either way.
+    });
+
     await Promise.all([
       ...MANAGED_TABLES.map((table) =>
         dataSource.query(`DROP TABLE IF EXISTS "${table}" CASCADE`),
       ),
       dataSource.query(`DROP TABLE IF EXISTS "migrations" CASCADE`),
+      // DROP TABLE ... CASCADE removes dependent constraints/views, but
+      // never the custom enum TYPE a dropped column used — a prior run
+      // that crashed before completing its own teardown can leave this
+      // type behind, making the next run's CREATE TYPE (inside this same
+      // migration's up()) fail. Dropping it here makes the suite
+      // self-healing regardless of how the previous run ended.
+      dataSource.query(
+        `DROP TYPE IF EXISTS "verification_tokens_type_enum" CASCADE`,
+      ),
     ]);
   });
 

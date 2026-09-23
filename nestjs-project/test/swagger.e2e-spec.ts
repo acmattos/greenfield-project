@@ -38,6 +38,10 @@ async function createApp(withSwagger: boolean): Promise<INestApplication<App>> {
   return app;
 }
 
+// Default 5000ms hook timeout is too tight for a full AppModule compile
+// (now includes upload/storage/queue module graphs) under load.
+jest.setTimeout(30000);
+
 describe('Swagger endpoints (e2e)', () => {
   describe('when SWAGGER_ENABLED=true', () => {
     let app: INestApplication<App>;
