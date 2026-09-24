@@ -850,7 +850,7 @@ SI-03.17 — depends on SI-03.1, SI-03.2, SI-03.4, SI-03.7, SI-03.10, SI-03.11
 
 **Processo:**
 
-- [ ] Trabalho realizado em branch `feature/*` criada a partir de `dev`; integração final via merge para `dev`; nenhum commit direto em `main` (per root `CLAUDE.md` § Git Conventions) — _parcial: trabalho em `feature/upload-processing` a partir de `dev`, sem nenhum commit direto em `main`, confirmado; o merge final para `dev` ainda não foi feito_
+- [x] Trabalho realizado em branch `feature/*` criada a partir de `dev`; integração final via merge para `dev`; nenhum commit direto em `main` (per root `CLAUDE.md` § Git Conventions) — merge `--no-ff` de `feature/upload-processing` em `dev` (commit `90ea32b`), sem conflitos, sem nenhum commit direto em `main`
 - [x] `progress.md` (gerado/atualizado por `/implement`) reflete status e testes de cada SI ao longo da execução
 
 **Full test suites:**
