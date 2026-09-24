@@ -132,6 +132,17 @@ describe('videos', () => {
     });
   });
 
+  it('1.4 stream-video-malformed-id-returns-404-not-500', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/videos/not-a-uuid/stream')
+      .expect(404);
+
+    expect(res.body).toMatchObject({
+      statusCode: 404,
+      error: 'VIDEO_NOT_FOUND',
+    });
+  });
+
   // ### 2. GET /videos/:id/download
 
   it('2.1 download-video-ready-redirects-with-attachment-disposition', async () => {
@@ -167,6 +178,17 @@ describe('videos', () => {
 
     const res = await request(app.getHttpServer())
       .get(`/videos/${nonExistentId}/download`)
+      .expect(404);
+
+    expect(res.body).toMatchObject({
+      statusCode: 404,
+      error: 'VIDEO_NOT_FOUND',
+    });
+  });
+
+  it('2.4 download-video-malformed-id-returns-404-not-500', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/videos/not-a-uuid/download')
       .expect(404);
 
     expect(res.body).toMatchObject({

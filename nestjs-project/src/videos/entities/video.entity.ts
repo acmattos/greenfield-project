@@ -2,6 +2,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
@@ -26,6 +27,7 @@ export class Video {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Index('IDX_videos_channel_id')
   @Column({ name: 'channel_id', type: 'uuid' })
   channelId: string;
 

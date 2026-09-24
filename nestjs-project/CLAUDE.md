@@ -100,9 +100,12 @@ Integration and e2e suites share a single test database. They **must** be run wi
 ```bash
 docker compose exec nestjs-api npm test -- --runInBand
 docker compose exec nestjs-api npm run test:e2e   # already configured
+docker compose exec worker npm run test:worker    # FFmpeg-dependent worker integration suites — see "Worker" below
 ```
 
 Parallel execution causes FK violations, deadlocks, and cross-suite contamination because suites truncate or seed shared tables concurrently.
+
+`npm test` and `npm run test:integration` run in the `nestjs-api` container and deliberately exclude the four FFmpeg-dependent `src/worker/*.integration-spec.ts` suites (`testPathIgnorePatterns` in `package.json`'s jest config) — `nestjs-api` has no FFmpeg binaries. `npm run test:worker` is their dedicated official command, with its own `test/jest-worker.json` config, and must run inside the `worker` container. All three commands must exit 0 independently; none of them alone constitutes "the full suite passed."
 
 During active development, run only the tests related to the file being changed (`npm test -- path/to/file.spec.ts`). Before declaring a task done, run the full suite — see the global `CLAUDE.md` → "Definition of Done (Technical)".
 
@@ -115,7 +118,7 @@ The `videos` module (`src/videos/`) owns the `Video` entity and its delivery end
 **Delivery endpoints** (`src/videos/videos.controller.ts`, both `@Public()` — anonymous viewing is allowed per the project's auth model):
 - `GET /videos/:id/stream` — `302` redirect to a short-lived presigned GET URL against the internal storage endpoint, letting the client issue real HTTP range requests (`206 Partial Content`) directly against MinIO/S3, without proxying bytes through the API.
 - `GET /videos/:id/download` — same redirect mechanism, for a full-file download.
-- Both throw `VideoNotReadyException` (404-mapped) if `processingStatus !== READY` — a video only becomes fetchable once the worker has finished processing it.
+- Both throw `VideoNotFoundException` (404-mapped) if the id doesn't correlate to a `Video`, or `VideoNotReadyException` (409-mapped) if `processingStatus !== READY` — a video only becomes fetchable once the worker has finished processing it.
 
 **Upload → processing → delivery, end to end:** a client creates a tus upload (`POST /videos/upload`) which creates the `Video` draft (`UPLOADING`) with `sourceStorageKey` literally equal to `Video.id` (per `upload-processing/TD-08`/`TD-11`); the client then `PATCH`es the file directly to `@tus/s3-store`, which streams it straight to MinIO/S3 without ever buffering the full body in the API process — verified empirically with a real ~8.9GB file (204 on completion, API memory stayed flat throughout the transfer). On `onUploadFinish`, `uploadCompletedAt` is written durably, then the `video.processing` job is enqueued; the worker downloads the object to a per-job temp dir, validates the format via FFprobe, extracts metadata (duration/dimensions/codecs/bitrate) and a thumbnail via FFmpeg, uploads the thumbnail, and writes `READY` with all fields populated.
 
@@ -133,10 +136,10 @@ docker compose ps worker                       # wait for "healthy" before runni
 
 Skipping this step leaves the container running stale code — worker integration tests would then silently exercise old logic instead of the change just made, since the container's own worker process competes for jobs on the same real Redis queue as any test-instantiated worker.
 
-**FFmpeg/FFprobe** are vendored (static binaries, `upload-processing/TD-04`) only in the `worker` image, at `FFMPEG_PATH`/`FFPROBE_PATH` (default `/usr/local/bin/ffmpeg` / `/usr/local/bin/ffprobe`) — not present in `nestjs-api`. Any test that spawns a real FFmpeg/FFprobe process, or exercises the real `video-processing` queue end-to-end, **must** run inside the `worker` container, not `nestjs-api`:
+**FFmpeg/FFprobe** are vendored (static binaries, `upload-processing/TD-04`) only in the `worker` image, at `FFMPEG_PATH`/`FFPROBE_PATH` (default `/usr/local/bin/ffmpeg` / `/usr/local/bin/ffprobe`) — not present in `nestjs-api`. The four `src/worker/*.integration-spec.ts` suites that spawn a real FFmpeg/FFprobe process or exercise the real `video-processing` queue end-to-end (`worker-shutdown`, `video-processing`, `reconciliation-sweep`, `ffmpeg-smoke`) are excluded from the official `npm test` / `npm run test:integration` commands (via `testPathIgnorePatterns`) precisely because those run in the `nestjs-api` container, which has no FFmpeg. They have their own official command, run inside the `worker` container instead:
 
 ```bash
-docker compose exec worker npx jest src/worker/video-processing.integration-spec.ts --runInBand
+docker compose exec worker npm run test:worker
 ```
 
 **Resumable upload (tus)** is mounted on the `nestjs-api` service at `/videos/upload` (`upload-processing/TD-05`/`TD-11`), handling `POST`/`PATCH`/`HEAD`/`DELETE` against `/videos/upload` and `/videos/upload/{id}` — `{id}` is the same UUID used as `Video.id` and the object's S3 key. It runs outside Nest's own guard pipeline (mounted as a plain sub-app via `@tus/server`), so authentication/ownership is enforced by the `onIncomingRequest` hook, not a Nest guard.

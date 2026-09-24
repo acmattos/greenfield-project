@@ -7,16 +7,19 @@ import {
   VideoProcessingStatus,
   VideoPublicationStatus,
 } from './entities/video.entity';
+import { VideoNotFoundException } from './exceptions/video-not-found.exception';
 import { VideoDeliveryService } from './video-delivery.service';
+
+const VIDEO_ID = '11111111-1111-4111-8111-111111111111';
 
 function buildVideo(overrides: Partial<Video> = {}): Video {
   return {
-    id: 'video-1',
+    id: VIDEO_ID,
     channelId: 'channel-1',
     title: 'Test video',
     processingStatus: VideoProcessingStatus.READY,
     publicationStatus: VideoPublicationStatus.DRAFT,
-    sourceStorageKey: 'video-1',
+    sourceStorageKey: VIDEO_ID,
     thumbnailStorageKey: null,
     uploadCompletedAt: null,
     durationSeconds: null,
@@ -67,5 +70,28 @@ describe('VideoDeliveryService (unit)', () => {
 
     expect(new URL(url).origin).toBe(publicEndpoint);
     expect(new URL(url).origin).not.toBe(internalEndpoint);
+  });
+
+  it('rejects a syntactically malformed video id with VideoNotFoundException, never querying the repository', async () => {
+    const findOneByMock = jest.fn();
+    const videoRepository = {
+      findOneBy: findOneByMock,
+    } as unknown as Repository<Video>;
+    const s3Client = new S3Client({
+      endpoint: 'http://localhost:9000',
+      forcePathStyle: true,
+      region: 'us-east-1',
+      credentials: { accessKeyId: 'streamtube', secretAccessKey: 'streamtube' },
+    });
+    const config = {
+      bucket: 'videos',
+      presignedUrlTtlSeconds: 3600,
+    } as ConfigType<typeof storageConfig>;
+    const service = new VideoDeliveryService(videoRepository, s3Client, config);
+
+    await expect(service.getStreamUrl('not-a-uuid')).rejects.toBeInstanceOf(
+      VideoNotFoundException,
+    );
+    expect(findOneByMock).not.toHaveBeenCalled();
   });
 });

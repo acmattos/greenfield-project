@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { isValidUuid } from '../common/utils/uuid.util';
 import storageConfig from '../config/storage.config';
 import { PUBLIC_S3_CLIENT } from '../storage/storage.constants';
 import { Video } from './entities/video.entity';
@@ -32,6 +33,13 @@ export class VideoDeliveryService {
   }
 
   async getVideoOrThrow(videoId: string): Promise<Video> {
+    // A syntactically malformed id is never a real Video — reject before
+    // it ever reaches a `uuid`-typed column query, which would otherwise
+    // throw an unhandled driver error (500) instead of a controlled 404.
+    if (!isValidUuid(videoId)) {
+      throw new VideoNotFoundException(videoId);
+    }
+
     const video = await this.videoRepository.findOneBy({ id: videoId });
     if (!video) {
       throw new VideoNotFoundException(videoId);
