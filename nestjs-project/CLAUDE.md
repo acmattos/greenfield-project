@@ -106,6 +106,19 @@ Parallel execution causes FK violations, deadlocks, and cross-suite contaminatio
 
 During active development, run only the tests related to the file being changed (`npm test -- path/to/file.spec.ts`). Before declaring a task done, run the full suite — see the global `CLAUDE.md` → "Definition of Done (Technical)".
 
+## Videos
+
+The `videos` module (`src/videos/`) owns the `Video` entity and its delivery endpoints; upload ingestion lives in `src/upload/` (tus mount), and asynchronous processing lives in `src/worker/` (see below) — three modules cooperating over one entity, not one monolithic "video" module.
+
+**Lifecycle** (`processingStatus` on `Video`, orthogonal to `publicationStatus`): `UPLOADING` → `PROCESSING` → `READY` or `FAILED`. Set by, respectively: `Video` creation (`upload-processing/TD-06`/`TD-11`), the worker's `VideoProcessingProcessor.process()` on job pickup, the same method on successful completion, and `persistTerminalFailure` (the single writer of `FAILED` — invoked by both the live `@OnWorkerEvent('failed')` handler and the reconciliation sweep, never two independent writers).
+
+**Delivery endpoints** (`src/videos/videos.controller.ts`, both `@Public()` — anonymous viewing is allowed per the project's auth model):
+- `GET /videos/:id/stream` — `302` redirect to a short-lived presigned GET URL against the internal storage endpoint, letting the client issue real HTTP range requests (`206 Partial Content`) directly against MinIO/S3, without proxying bytes through the API.
+- `GET /videos/:id/download` — same redirect mechanism, for a full-file download.
+- Both throw `VideoNotReadyException` (404-mapped) if `processingStatus !== READY` — a video only becomes fetchable once the worker has finished processing it.
+
+**Upload → processing → delivery, end to end:** a client creates a tus upload (`POST /videos/upload`) which creates the `Video` draft (`UPLOADING`) with `sourceStorageKey` literally equal to `Video.id` (per `upload-processing/TD-08`/`TD-11`); the client then `PATCH`es the file directly to `@tus/s3-store`, which streams it straight to MinIO/S3 without ever buffering the full body in the API process — verified empirically with a real ~8.9GB file (204 on completion, API memory stayed flat throughout the transfer). On `onUploadFinish`, `uploadCompletedAt` is written durably, then the `video.processing` job is enqueued; the worker downloads the object to a per-job temp dir, validates the format via FFprobe, extracts metadata (duration/dimensions/codecs/bitrate) and a thumbnail via FFmpeg, uploads the thumbnail, and writes `READY` with all fields populated.
+
 ## Worker (Video Processing)
 
 The `worker` service is a **standalone** NestJS application context (`NestFactory.createApplicationContext`, own `WorkerModule` — not `AppModule`), consuming the `video-processing` BullMQ queue. It runs `node dist/worker/main.js` as its container's PID 1 — a long-running process that does **not** hot-reload.
