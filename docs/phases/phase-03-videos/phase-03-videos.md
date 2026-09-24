@@ -824,47 +824,47 @@ SI-03.17 — depends on SI-03.1, SI-03.2, SI-03.4, SI-03.7, SI-03.10, SI-03.11
 
 ## Deliverables
 
-- [ ] SI-03.1 — Infra: configurar object storage (MinIO) e cliente S3 (endpoint interno + público)
-- [ ] SI-03.2 — Infra: bootstrap idempotente do bucket MinIO (seguro contra concorrência)
-- [ ] SI-03.3 — Entidade Video + migration
-- [ ] SI-03.4 — Infra: Redis + módulo de fila BullMQ
-- [ ] SI-03.5 — Serviço de entrega: URLs assinadas para streaming/download
-- [ ] SI-03.6 — Endpoints de streaming e download
-- [ ] SI-03.7 — Módulo de upload: mount tus + criação de rascunho (bare UUID) + resumabilidade real após falha
-- [ ] SI-03.8 — Boundary de autenticação em todos os requests tus (onIncomingRequest)
-- [ ] SI-03.9 — Enfileiramento do job de processamento ao concluir o upload
-- [ ] SI-03.10 — Infra: binários FFmpeg/FFprobe vendorizados na imagem do worker
-- [ ] SI-03.11 — Bootstrap do worker: entrypoint, processor, transição PROCESSING/no-op, capacidade do volume temporário
-- [ ] SI-03.12 — Worker: download para temp dir com preflight de espaço e limpeza
-- [ ] SI-03.13 — Worker: validação autoritativa de formato via FFprobe (UnrecoverableError, sem retry real)
-- [ ] SI-03.14 — Worker: extração de metadados, thumbnail e transição para READY
-- [ ] SI-03.15 — Worker: handler `@OnWorkerEvent('failed')` — transição final para FAILED, sem flicker
-- [ ] SI-03.16 — Reconciliation sweep: recuperação de uploads presos e reparo de FAILED perdido (três branches)
-- [ ] SI-03.17 — Documentação: atualizar nestjs-project/CLAUDE.md e CLAUDE.md raiz
-- [ ] SI-03.18 — Worker: graceful shutdown
-- [ ] SI-03.19 — tus termination (DELETE): escopo restrito a uploads em andamento
+- [x] SI-03.1 — Infra: configurar object storage (MinIO) e cliente S3 (endpoint interno + público)
+- [x] SI-03.2 — Infra: bootstrap idempotente do bucket MinIO (seguro contra concorrência)
+- [x] SI-03.3 — Entidade Video + migration
+- [x] SI-03.4 — Infra: Redis + módulo de fila BullMQ
+- [x] SI-03.5 — Serviço de entrega: URLs assinadas para streaming/download
+- [x] SI-03.6 — Endpoints de streaming e download
+- [x] SI-03.7 — Módulo de upload: mount tus + criação de rascunho (bare UUID) + resumabilidade real após falha
+- [x] SI-03.8 — Boundary de autenticação em todos os requests tus (onIncomingRequest)
+- [x] SI-03.9 — Enfileiramento do job de processamento ao concluir o upload
+- [x] SI-03.10 — Infra: binários FFmpeg/FFprobe vendorizados na imagem do worker
+- [x] SI-03.11 — Bootstrap do worker: entrypoint, processor, transição PROCESSING/no-op, capacidade do volume temporário
+- [x] SI-03.12 — Worker: download para temp dir com preflight de espaço e limpeza
+- [x] SI-03.13 — Worker: validação autoritativa de formato via FFprobe (UnrecoverableError, sem retry real)
+- [x] SI-03.14 — Worker: extração de metadados, thumbnail e transição para READY
+- [x] SI-03.15 — Worker: handler `@OnWorkerEvent('failed')` — transição final para FAILED, sem flicker
+- [x] SI-03.16 — Reconciliation sweep: recuperação de uploads presos e reparo de FAILED perdido (três branches)
+- [x] SI-03.17 — Documentação: atualizar nestjs-project/CLAUDE.md e CLAUDE.md raiz
+- [x] SI-03.18 — Worker: graceful shutdown
+- [x] SI-03.19 — tus termination (DELETE): escopo restrito a uploads em andamento
 
 **Submission-structure compatibility** _(risco de submissão — não renomear os artefatos usados pela pipeline)_:
 
-- [ ] Antes da entrega final, **copiar** (nunca mover/renomear) `docs/phases/phase-03-upload-processing/phase-03-upload-processing.md` para `docs/phases/phase-03-videos/phase-03-videos.md`, e `docs/decisions/technical-decisions-upload-processing.md` para `docs/decisions/technical-decisions-phase-03-videos.md`, preservando os originais intactos para a pipeline
+- [x] Antes da entrega final, **copiar** (nunca mover/renomear) `docs/phases/phase-03-upload-processing/phase-03-upload-processing.md` para `docs/phases/phase-03-videos/phase-03-videos.md`, e `docs/decisions/technical-decisions-upload-processing.md` para `docs/decisions/technical-decisions-phase-03-videos.md`, preservando os originais intactos para a pipeline
 
 **Processo:**
 
-- [ ] Trabalho realizado em branch `feature/*` criada a partir de `dev`; integração final via merge para `dev`; nenhum commit direto em `main` (per root `CLAUDE.md` § Git Conventions)
-- [ ] `progress.md` (gerado/atualizado por `/implement`) reflete status e testes de cada SI ao longo da execução
+- [ ] Trabalho realizado em branch `feature/*` criada a partir de `dev`; integração final via merge para `dev`; nenhum commit direto em `main` (per root `CLAUDE.md` § Git Conventions) — _parcial: trabalho em `feature/upload-processing` a partir de `dev`, sem nenhum commit direto em `main`, confirmado; o merge final para `dev` ainda não foi feito_
+- [x] `progress.md` (gerado/atualizado por `/implement`) reflete status e testes de cada SI ao longo da execução
 
 **Full test suites:**
 
-- [ ] Unit tests pass (`docker compose exec nestjs-api npm test`)
-- [ ] Integration tests pass — regras/mocks, container da API (`docker compose exec nestjs-api npm run test:integration`)
-- [ ] Integration tests pass — FFmpeg real, container do **worker** (comando definido em SI-03.17 — nunca coberto por `docker compose exec nestjs-api ...`, já que a imagem da API não contém os binários FFmpeg/FFprobe por decisão de TD-04)
-- [ ] E2E tests pass (`docker compose exec nestjs-api npm run test:e2e`)
-- [ ] Type-check passes (`docker compose exec nestjs-api npx tsc --noEmit`)
-- [ ] Lint passes (`docker compose exec nestjs-api npm run lint`)
-- [ ] Project builds successfully — ambos os entrypoints (`docker compose exec nestjs-api npm run build`, gerando `dist/main.js` **e** `dist/worker/main.js`)
-- [ ] `docker compose up -d` sobe `db` + `minio` + `redis` + `nestjs-api` + `worker` com todos os healthchecks reportando saudável
+- [x] Unit tests pass (`docker compose exec nestjs-api npm test`)
+- [x] Integration tests pass — regras/mocks, container da API (`docker compose exec nestjs-api npm run test:integration`)
+- [x] Integration tests pass — FFmpeg real, container do **worker** (comando definido em SI-03.17 — nunca coberto por `docker compose exec nestjs-api ...`, já que a imagem da API não contém os binários FFmpeg/FFprobe por decisão de TD-04)
+- [x] E2E tests pass (`docker compose exec nestjs-api npm run test:e2e`)
+- [x] Type-check passes (`docker compose exec nestjs-api npx tsc --noEmit`)
+- [x] Lint passes (`docker compose exec nestjs-api npm run lint`)
+- [x] Project builds successfully — ambos os entrypoints (`docker compose exec nestjs-api npm run build`, gerando `dist/main.js` **e** `dist/worker/main.js`)
+- [x] `docker compose up -d` sobe `db` + `minio` + `redis` + `nestjs-api` + `worker` com todos os healthchecks reportando saudável
 
 **Pipeline (antes de `/implement`):**
 
-- [ ] `nestjs-project/specs/video-delivery.plan.md` pode estar desatualizado após estas revisões — rodar `/plan-test-specs upload-processing` para resincronizar com os endpoints/edge cases atuais antes de implementar
-- [ ] Nenhuma nova decisão estratégica pendente — os 4 gaps antes marcados `NEEDS_DECISION` foram formalizados via `/research` (TD-10/TD-11 revisions, TD-13 nova) e incorporados a este plano; não é necessário reabrir `/research` antes de `/implement`
+- [x] `nestjs-project/specs/video-delivery.plan.md` pode estar desatualizado após estas revisões — rodar `/plan-test-specs upload-processing` para resincronizar com os endpoints/edge cases atuais antes de implementar
+- [x] Nenhuma nova decisão estratégica pendente — os 4 gaps antes marcados `NEEDS_DECISION` foram formalizados via `/research` (TD-10/TD-11 revisions, TD-13 nova) e incorporados a este plano; não é necessário reabrir `/research` antes de `/implement`

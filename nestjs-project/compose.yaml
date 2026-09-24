@@ -12,6 +12,8 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_started
+      minio:
+        condition: service_healthy
 
   db:
     image: postgres:17

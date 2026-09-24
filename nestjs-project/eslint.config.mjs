@@ -32,4 +32,17 @@ export default tseslint.config(
       "prettier/prettier": ["error", { endOfLine: "auto" }],
     },
   },
+  {
+    // jest.Mocked<Repository<T>>/jest.Mocked<Service> fixtures are the
+    // standard NestJS testing pattern, but `unbound-method` has no concept
+    // of Jest mocks — it flags every `expect(mock.method).toHaveBeenCalled...`
+    // as an unbound `this`-dependent class method, which is a false positive
+    // for a mock that never uses `this`. Disabling the base rule for test
+    // files (instead of the real fix, eslint-plugin-jest's aware override)
+    // avoids adding a new dependency for a test-only false positive.
+    files: ['**/*.spec.ts', '**/*.integration-spec.ts', 'test/**/*.ts'],
+    rules: {
+      '@typescript-eslint/unbound-method': 'off',
+    },
+  },
 );

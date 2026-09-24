@@ -145,6 +145,16 @@ describe('TusHooksService', () => {
       );
     });
 
+    it('falls back to filename when title is whitespace-only, instead of discarding the filename', async () => {
+      const upload = fakeUpload({
+        metadata: { title: '   ', filename: 'clip.mp4' },
+      });
+      await service.onUploadCreate(fakeRequest(AUTH_HEADER), res, upload);
+      expect(videoRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'clip.mp4' }),
+      );
+    });
+
     it("falls back to 'Untitled video' when neither title nor filename is present", async () => {
       const upload = fakeUpload({ metadata: {} });
       await service.onUploadCreate(fakeRequest(AUTH_HEADER), res, upload);

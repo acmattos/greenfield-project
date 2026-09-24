@@ -7,6 +7,7 @@ import type { Queue } from 'bullmq';
 import { Repository } from 'typeorm';
 import type { Upload } from '@tus/server';
 import { Channel } from '../channels/entities/channel.entity';
+import { isValidUuid } from '../common/utils/uuid.util';
 import { VIDEO_PROCESSING_QUEUE } from '../queue/queue.constants';
 import { Video } from '../videos/entities/video.entity';
 import { extractAuthenticatedUserId } from './jwt-from-request.util';
@@ -14,8 +15,6 @@ import { resolveTitle } from './resolve-title.util';
 import { TusProtocolError } from './tus-protocol.error';
 
 const SUPPORTED_VIDEO_FORMAT = 'video/mp4';
-const UUID_REGEX =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 @Injectable()
 export class TusHooksService {
@@ -114,7 +113,7 @@ export class TusHooksService {
     uploadId: string,
     userId: string,
   ): Promise<void> {
-    if (!UUID_REGEX.test(uploadId)) {
+    if (!isValidUuid(uploadId)) {
       throw this.videoNotFoundError();
     }
 

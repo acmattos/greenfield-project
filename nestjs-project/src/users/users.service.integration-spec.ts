@@ -10,7 +10,6 @@ import {
 import { Video } from '../videos/entities/video.entity';
 import { User } from './entities/user.entity';
 import { UsersService } from './users.service';
-import { TestingModule } from '@nestjs/testing';
 
 const ALL_ENTITIES = [User, Channel, RefreshToken, VerificationToken, Video];
 

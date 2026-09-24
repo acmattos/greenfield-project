@@ -1,0 +1,10 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "../src",
+  "testEnvironment": "node",
+  "testRegex": "worker/(worker-shutdown|video-processing|reconciliation-sweep|ffmpeg-smoke)\\.integration-spec\\.ts$",
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "setupFiles": ["dotenv/config"]
+}
